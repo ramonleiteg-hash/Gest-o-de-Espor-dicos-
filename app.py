@@ -39,20 +39,24 @@ if 'pagina_ativa' not in st.session_state:
 def ler_planilha_inteligente(file, tipo="esporadica"):
     if file is not None:
         try:
+            # 1. Lê a planilha uma primeira vez para descobrir a linha do cabeçalho
             if file.name.endswith('.csv'):
                 df_raw = pd.read_csv(file, header=None)
             else:
                 df_raw = pd.read_excel(file, header=None)
             
-            # Aumentado para procurar nas 15 primeiras linhas
             header_row = 0
-            for idx, row in df_raw.head(15).iterrows():
+            for idx, row in df_raw.head(20).iterrows():
                 row_str = " ".join([normalize_text(str(val)) for val in row.values])
-                # Palavras-chave expandidas para garantir que ache a linha correta
-                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA']):
+                # Ampliado para aceitar vocabulário padrão SAP
+                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA', 'ORDEM', 'AVISO', 'LOCAL']):
                     header_row = idx
                     break
             
+            # 2. "Rebobina" o arquivo para ler do início novamente
+            file.seek(0)
+            
+            # 3. Lê o arquivo definitivamente a partir da linha descoberta
             if file.name.endswith('.csv'):
                 df = pd.read_csv(file, header=header_row)
             else:
@@ -60,24 +64,30 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             
             df.columns = df.columns.astype(str).str.strip()
             
+            # Mapeamento dinâmico (entende inclusive variações do SAP)
             rename_dict = {}
             for col in df.columns:
                 norm_col = normalize_text(col)
-                if 'NOTA' in norm_col:
-                    rename_dict[col] = 'NOTAS'
-                elif 'EQUIP' in norm_col:
-                    rename_dict[col] = 'EQUIPAMENTO'
-                elif 'ARE' in norm_col:
-                    rename_dict[col] = 'ÁREA'
+                if any(x in norm_col for x in ['NOTA', 'ORDEM', 'AVISO']):
+                    if 'NOTAS' not in rename_dict.values():
+                        rename_dict[col] = 'NOTAS'
+                elif any(x in norm_col for x in ['EQUIP', 'DENOMINA']):
+                    if 'EQUIPAMENTO' not in rename_dict.values():
+                        rename_dict[col] = 'EQUIPAMENTO'
+                elif any(x in norm_col for x in ['ARE', 'LOCAL', 'SETOR']):
+                    if 'ÁREA' not in rename_dict.values():
+                        rename_dict[col] = 'ÁREA'
                 elif 'ANALIS' in norm_col:
                     rename_dict[col] = 'Análise realizada?'
-                elif 'STATUS' in norm_col or 'SITUA' in norm_col:
+                elif any(x in norm_col for x in ['STATUS', 'SITUA', 'ESTADO']):
                     rename_dict[col] = 'Status M4'
-                elif 'MES' in norm_col:
-                    rename_dict[col] = 'Mês'
+                elif any(x in norm_col for x in ['MES', 'DATA', 'CRIACAO']):
+                    if 'Mês' not in rename_dict.values():
+                        rename_dict[col] = 'Mês'
             
             df = df.rename(columns=rename_dict)
             
+            # Garante a existência das colunas
             if tipo == "esporadica":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
             else:
@@ -87,23 +97,25 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
                 if col not in df.columns:
                     df[col] = "Não Classificado"
             
+            # Preenche células vazias no Mês (devido à mesclagem do Excel)
             if 'Mês' in df.columns:
                 df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
+                df["Mês"] = df["Mês"].astype(str).str.strip()
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-            df["Mês"] = df["Mês"].astype(str).str.strip()
             
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
 
+            # Remove lixo da tabela
             if "NOTAS" in df.columns:
                 df = df.dropna(subset=["NOTAS"])
                 df = df[df["NOTAS"].astype(str).str.upper() != "NOTAS"]
                 
             return df
         except Exception as e:
-            st.error("⚠️ Ocorreu um desvio no padrão da planilha, mas a aplicação foi mantida no ar.")
-            return None # Tratado de forma segura mais abaixo
+            st.error(f"⚠️ Erro ao ler a planilha: {e}")
+            return None 
     else:
         # Dados de Demonstração padrão
         if tipo == "esporadica":
@@ -156,7 +168,6 @@ with st.sidebar:
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
 # -------------------------------------------------------------------------
 if st.session_state.pagina_ativa == 'Esporadicas':
-    # Trava de segurança caso o arquivo venha corrompido ou fora do formato
     if df is None:
         df = pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"])
 
@@ -256,7 +267,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
 # TELA 2: GESTÃO DE NOTAS M4
 # -------------------------------------------------------------------------
 elif st.session_state.pagina_ativa == 'M4':
-    # Trava de segurança para a tabela M4
     if df_m4 is None:
         df_m4 = pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status M4", "Mês"])
 
