@@ -87,7 +87,8 @@ def load_data(file):
 # BARRA LATERAL (FILTROS)
 # -------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### 🟢 **USIMINAS**")
+    # USIMINAS em verde e maior
+    st.markdown("### <span style='color: #1b5e20; font-size: 26px; font-weight: bold;'>🟢 USIMINAS</span>", unsafe_allow_html=True)
     st.caption("Servidor interno / CMM")
     st.markdown("---")
     
