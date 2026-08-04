@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go  # Adicionado para criar o gráfico combinado (barras + linha)
+import plotly.graph_objects as go
 from datetime import datetime
 import unicodedata
 import io
@@ -60,7 +60,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
+# LEITOR INTELIGENTE AUTOMÁTICO
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -159,6 +159,9 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
             
+            # ATENÇÃO: Aqui definimos a capitalização correta para não bugar a leitura!
+            df["Status"] = df["Status"].astype(str).str.strip().str.capitalize()
+            
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
 
@@ -214,20 +217,22 @@ with st.sidebar:
     st.subheader(f"Filtros - {painel_selecionado}")
     
     if painel_selecionado == "Esporádicas":
-        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
+        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status SAP", "Análise realizada?", "Mês"])
         
         st.radio("Filtro Rápido (Situação):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="esp_situacao")
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        st.selectbox("Filtro detalhado por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
+        # Filtro detalhado buscando pela coluna Status SAP
+        st.selectbox("Filtro Detalhado (Status SAP):", ["Todos"] + sorted(list(df_ref["Status SAP"].dropna().unique())), key="esp_status")
         st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
         st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df_ref["Mês"].dropna().unique())), key="esp_mes")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
-        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
+        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status SAP", "Mês"])
         
         st.radio("Filtro Rápido (Situação M4):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="m4_situacao")
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
-        st.selectbox("Filtro detalhado por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
+        # Filtro detalhado buscando pela coluna Status SAP
+        st.selectbox("Filtro Detalhado (Status SAP M4):", ["Todos"] + sorted(list(df_ref_m4["Status SAP"].dropna().unique())), key="m4_status")
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
@@ -241,10 +246,12 @@ if painel_selecionado == "Esporádicas":
 
     df_filtered = df.copy()
 
+    # Aplicação dos Filtros
     if st.session_state.esp_situacao == "Encerradas": df_filtered = df_filtered[df_filtered["Status"] == "Encerrada"]
     elif st.session_state.esp_situacao == "Abertas": df_filtered = df_filtered[df_filtered["Status"] == "Aberta"]
+    
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
-    if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
+    if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status SAP"] == st.session_state.esp_status]
     if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
     if st.session_state.esp_mes != "Todos": df_filtered = df_filtered[df_filtered["Mês"] == st.session_state.esp_mes]
     if st.session_state.esp_pesquisa:
@@ -253,6 +260,7 @@ if painel_selecionado == "Esporádicas":
 
     st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Esporádicas &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas exibidas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
     
+    # Cálculos dos KPIs
     col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
     encerradas = len(df_filtered[df_filtered["Status"] == "Encerrada"])
@@ -273,6 +281,7 @@ if painel_selecionado == "Esporádicas":
         
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # Gráficos Superiores
     col_chart_left, col_chart_right = st.columns(2)
     with col_chart_left:
         st.markdown("##### 🚨 Distribuição por Área (%)")
@@ -281,55 +290,71 @@ if painel_selecionado == "Esporádicas":
             area_counts.columns = ["Área", "Quantidade"]
             fig_donut = px.pie(area_counts, names="Área", values="Quantidade", hole=0.5, color_discrete_sequence=px.colors.qualitative.Prism)
             fig_donut.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
-            fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
+            fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=300)
             st.plotly_chart(fig_donut, use_container_width=True)
 
     with col_chart_right:
-        st.markdown("##### 📉 Evolução Histórica")
-        if not df_filtered.empty and "Mês" in df_filtered.columns:
-            df_chart = df_filtered.copy()
-            df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
-            df_chart["Mês_Formatado"] = df_chart["Mês_Formatado"].fillna(df_chart["Mês"])
-            
-            # Agrupa e conta Status por Mês
-            grouped = df_chart.groupby(["Mês_Formatado", "Status"]).size().unstack(fill_value=0).reset_index()
-            if 'Encerrada' not in grouped.columns: grouped['Encerrada'] = 0
-            if 'Aberta' not in grouped.columns: grouped['Aberta'] = 0
-            
-            grouped['Total'] = grouped['Aberta'] + grouped['Encerrada']
-            grouped = grouped.sort_values("Mês_Formatado")
-            
-            # Construção do Gráfico Misto (Barras + Linha)
-            fig_evo = go.Figure()
-            
-            # Barra Verde Claro (Total)
-            fig_evo.add_trace(go.Bar(
-                x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', 
-                marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
-            ))
-            
-            # Barra Verde Escuro (Encerradas)
-            fig_evo.add_trace(go.Bar(
-                x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', 
-                marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')
-            ))
-            
-            # Linha Vermelha (Abertas / Backlog)
-            fig_evo.add_trace(go.Scatter(
-                x=grouped['Mês_Formatado'], y=grouped['Aberta'], name='Abertas (Pendentes)', 
-                mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
-                text=grouped['Aberta'], textposition='top center', textfont=dict(weight='bold')
-            ))
-            
-            fig_evo.update_layout(
-                barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-                xaxis_title="", yaxis_title="Quantidade"
-            )
-            # Eleva o teto do eixo Y em 15% para que o texto do topo não fique cortado
-            fig_evo.update_yaxes(range=[0, grouped['Total'].max() * 1.15])
-            
-            st.plotly_chart(fig_evo, use_container_width=True)
+        st.markdown("##### 🌡️ Termômetro de Conclusão")
+        taxa_conclusao = (encerradas / total_notas * 100) if total_notas > 0 else 0
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = taxa_conclusao,
+            number = {'suffix': "%", 'font': {'size': 40, 'color': '#1b5e20'}},
+            gauge = {
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                'bar': {'color': "#1b5e20"},
+                'bgcolor': "white",
+                'borderwidth': 2,
+                'bordercolor': "gray",
+                'steps': [
+                    {'range': [0, 50], 'color': '#ffebee'},    # Vermelho claro
+                    {'range': [50, 80], 'color': '#fff9c4'},   # Amarelo claro
+                    {'range': [80, 100], 'color': '#c8e6c9'}], # Verde claro
+                'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 90}
+            }
+        ))
+        fig_gauge.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
+        st.plotly_chart(fig_gauge, use_container_width=True)
+
+    # Gráfico Inferior Full Width
+    st.markdown("##### 📉 Evolução Histórica (Burn-down)")
+    if not df_filtered.empty and "Mês" in df_filtered.columns:
+        df_chart = df_filtered.copy()
+        df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
+        df_chart["Mês_Formatado"] = df_chart["Mês_Formatado"].fillna(df_chart["Mês"])
+        
+        grouped = df_chart.groupby(["Mês_Formatado", "Status"]).size().unstack(fill_value=0).reset_index()
+        if 'Encerrada' not in grouped.columns: grouped['Encerrada'] = 0
+        if 'Aberta' not in grouped.columns: grouped['Aberta'] = 0
+        
+        grouped['Total'] = grouped['Aberta'] + grouped['Encerrada']
+        grouped = grouped.sort_values("Mês_Formatado")
+        
+        fig_evo = go.Figure()
+        
+        fig_evo.add_trace(go.Bar(
+            x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', 
+            marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo.add_trace(go.Bar(
+            x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', 
+            marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo.add_trace(go.Scatter(
+            x=grouped['Mês_Formatado'], y=grouped['Aberta'], name='Abertas (Pendentes)', 
+            mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
+            text=grouped['Aberta'], textposition='top center', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo.update_layout(
+            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            xaxis_title="", yaxis_title="Quantidade"
+        )
+        fig_evo.update_yaxes(range=[0, grouped['Total'].max() * 1.15])
+        st.plotly_chart(fig_evo, use_container_width=True)
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
@@ -342,10 +367,12 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
     
+    # Aplicação dos Filtros
     if st.session_state.m4_situacao == "Encerradas": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == "Encerrada"]
     elif st.session_state.m4_situacao == "Abertas": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == "Aberta"]
+    
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
-    if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
+    if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status SAP"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
     if st.session_state.m4_pesquisa:
         mask = df_m4_filtered.astype(str).apply(lambda x: x.str.contains(st.session_state.m4_pesquisa, case=False)).any(axis=1)
@@ -353,6 +380,7 @@ else:
 
     st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Notas M4 &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas exibidas:</b> {len(df_m4_filtered):,}</p>", unsafe_allow_html=True)
     
+    # Cálculos dos KPIs
     col_k1, col_k2, col_k3, col_k4 = st.columns(4)
     total_m4 = len(df_m4_filtered)
     encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"] == "Encerrada"])
@@ -370,6 +398,7 @@ else:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # Gráficos Superiores
     col_chart_m1, col_chart_m2 = st.columns(2)
     with col_chart_m1:
         st.markdown("##### 🚨 M4 - Distribuição por Área (%)")
@@ -378,55 +407,71 @@ else:
             area_m4_counts.columns = ["Área", "Quantidade"]
             fig_donut_m4 = px.pie(area_m4_counts, names="Área", values="Quantidade", hole=0.5, color_discrete_sequence=px.colors.qualitative.Prism)
             fig_donut_m4.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
-            fig_donut_m4.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
+            fig_donut_m4.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=300)
             st.plotly_chart(fig_donut_m4, use_container_width=True)
 
     with col_chart_m2:
-        st.markdown("##### 📉 Evolução Histórica")
-        if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
-            df_chart_m4 = df_m4_filtered.copy()
-            df_chart_m4["Mês_Formatado"] = pd.to_datetime(df_chart_m4["Mês"], errors='coerce').dt.strftime('%Y-%m')
-            df_chart_m4["Mês_Formatado"] = df_chart_m4["Mês_Formatado"].fillna(df_chart_m4["Mês"])
-            
-            # Agrupa e conta Status por Mês
-            grouped_m4 = df_chart_m4.groupby(["Mês_Formatado", "Status"]).size().unstack(fill_value=0).reset_index()
-            if 'Encerrada' not in grouped_m4.columns: grouped_m4['Encerrada'] = 0
-            if 'Aberta' not in grouped_m4.columns: grouped_m4['Aberta'] = 0
-            
-            grouped_m4['Total'] = grouped_m4['Aberta'] + grouped_m4['Encerrada']
-            grouped_m4 = grouped_m4.sort_values("Mês_Formatado")
-            
-            # Construção do Gráfico Misto (Barras + Linha)
-            fig_evo_m4 = go.Figure()
-            
-            # Barra Verde Claro (Total)
-            fig_evo_m4.add_trace(go.Bar(
-                x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', 
-                marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')
-            ))
-            
-            # Barra Verde Escuro (Encerradas)
-            fig_evo_m4.add_trace(go.Bar(
-                x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', 
-                marker_color='#2e7d32', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')
-            ))
-            
-            # Linha Vermelha (Abertas / Backlog)
-            fig_evo_m4.add_trace(go.Scatter(
-                x=grouped_m4['Mês_Formatado'], y=grouped_m4['Aberta'], name='Abertas (Pendentes)', 
-                mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
-                text=grouped_m4['Aberta'], textposition='top center', textfont=dict(weight='bold')
-            ))
-            
-            fig_evo_m4.update_layout(
-                barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-                xaxis_title="", yaxis_title="Quantidade"
-            )
-            # Eleva o teto do eixo Y para os números não cortarem
-            fig_evo_m4.update_yaxes(range=[0, grouped_m4['Total'].max() * 1.15])
-            
-            st.plotly_chart(fig_evo_m4, use_container_width=True)
+        st.markdown("##### 🌡️ Termômetro de Conclusão M4")
+        taxa_conclusao_m4 = (encerradas_m4 / total_m4 * 100) if total_m4 > 0 else 0
+        fig_gauge_m4 = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = taxa_conclusao_m4,
+            number = {'suffix': "%", 'font': {'size': 40, 'color': '#0288d1'}},
+            gauge = {
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                'bar': {'color': "#0288d1"},
+                'bgcolor': "white",
+                'borderwidth': 2,
+                'bordercolor': "gray",
+                'steps': [
+                    {'range': [0, 50], 'color': '#ffebee'},
+                    {'range': [50, 80], 'color': '#fff9c4'},
+                    {'range': [80, 100], 'color': '#c8e6c9'}],
+                'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 90}
+            }
+        ))
+        fig_gauge_m4.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
+        st.plotly_chart(fig_gauge_m4, use_container_width=True)
+
+    # Gráfico Inferior Full Width
+    st.markdown("##### 📉 Evolução Histórica M4 (Burn-down)")
+    if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
+        df_chart_m4 = df_m4_filtered.copy()
+        df_chart_m4["Mês_Formatado"] = pd.to_datetime(df_chart_m4["Mês"], errors='coerce').dt.strftime('%Y-%m')
+        df_chart_m4["Mês_Formatado"] = df_chart_m4["Mês_Formatado"].fillna(df_chart_m4["Mês"])
+        
+        grouped_m4 = df_chart_m4.groupby(["Mês_Formatado", "Status"]).size().unstack(fill_value=0).reset_index()
+        if 'Encerrada' not in grouped_m4.columns: grouped_m4['Encerrada'] = 0
+        if 'Aberta' not in grouped_m4.columns: grouped_m4['Aberta'] = 0
+        
+        grouped_m4['Total'] = grouped_m4['Aberta'] + grouped_m4['Encerrada']
+        grouped_m4 = grouped_m4.sort_values("Mês_Formatado")
+        
+        fig_evo_m4 = go.Figure()
+        
+        fig_evo_m4.add_trace(go.Bar(
+            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', 
+            marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo_m4.add_trace(go.Bar(
+            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', 
+            marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo_m4.add_trace(go.Scatter(
+            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Aberta'], name='Abertas (Pendentes)', 
+            mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
+            text=grouped_m4['Aberta'], textposition='top center', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo_m4.update_layout(
+            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            xaxis_title="", yaxis_title="Quantidade"
+        )
+        fig_evo_m4.update_yaxes(range=[0, grouped_m4['Total'].max() * 1.15])
+        st.plotly_chart(fig_evo_m4, use_container_width=True)
 
     st.markdown("---")
     st.subheader("📋 Registros Detalhados - Notas M4")
