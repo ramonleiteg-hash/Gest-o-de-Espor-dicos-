@@ -62,9 +62,7 @@ def load_data(file):
                 if col not in df.columns:
                     df[col] = "Não Classificado"
             
-            # Preencher células vazias na coluna Mês (células mescladas do Excel)
             df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
-            
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
             df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
             df["Mês"] = df["Mês"].astype(str).str.strip()
@@ -133,7 +131,7 @@ if search_query:
 # -------------------------------------------------------------------------
 col_title, col_btn = st.columns([6, 1])
 with col_title:
-    st.markdown("## 📊 Gestão de Notas Esporádicas Redução/Energia")
+    st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas Esporádicas Redução/Energia</span>", unsafe_allow_html=True)
 with col_btn:
     st.button("🔗 Compartilhar Dashboard")
 
@@ -209,7 +207,6 @@ with tab2:
     with col_chart_right:
         st.markdown("##### 📈 Notas por Mês")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
-            # Agrupamento correto por contagem exata de notas por mês
             mes_counts = df_filtered.groupby("Mês", as_index=False).size()
             mes_counts.columns = ["Mês", "Quantidade"]
             
