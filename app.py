@@ -31,20 +31,32 @@ def normalize_text(text):
     return "".join([c for c in nfkd if not unicodedata.combining(c)]).upper().strip()
 
 # -------------------------------------------------------------------------
-# ESTADOS E CONTROLE DE FILTROS (Botão Limpar)
+# ESTADOS E CONTROLE DE FILTROS (Botão Limpar e Botões Rápidos)
 # -------------------------------------------------------------------------
-filtros_keys = ['esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
-                'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa']
+filtros_keys = [
+    'esp_situacao', 'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
+    'm4_situacao', 'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
+]
 
 # Inicializa as variáveis na memória para os filtros funcionarem
 for k in filtros_keys:
     if k not in st.session_state:
-        st.session_state[k] = "" if 'pesquisa' in k else "Todos"
+        if 'pesquisa' in k:
+            st.session_state[k] = ""
+        elif 'situacao' in k:
+            st.session_state[k] = "Todas"
+        else:
+            st.session_state[k] = "Todos"
 
 def limpar_filtros():
     """Função engatilhada ao clicar no botão de limpar filtros"""
     for k in filtros_keys:
-        st.session_state[k] = "" if 'pesquisa' in k else "Todos"
+        if 'pesquisa' in k:
+            st.session_state[k] = ""
+        elif 'situacao' in k:
+            st.session_state[k] = "Todas"
+        else:
+            st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
 # LEITOR INTELIGENTE AUTOMÁTICO (COM TRAVA DE DESDUPLICAÇÃO)
@@ -114,8 +126,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             df = df.rename(columns=rename_dict)
             
-            # ---> A TRAVA DE SEGURANÇA QUE RESOLVE O ERRO <---
-            # Remove qualquer coluna que tenha ficado com nome duplicado
+            # Trava de segurança para desduplicação
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
             if tipo == "esporádicas":
@@ -190,15 +201,23 @@ with st.sidebar:
     
     if painel_selecionado == "Esporádicas":
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
+        
+        # BOTÕES DE FILTRO RÁPIDO PARA SITUAÇÃO
+        st.radio("Filtro Rápido (Situação):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="esp_situacao")
+        
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        st.selectbox("Filtro por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
+        st.selectbox("Filtro detalhado por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
         st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
         st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df_ref["Mês"].dropna().unique())), key="esp_mes")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
         df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
+        
+        # BOTÕES DE FILTRO RÁPIDO PARA SITUAÇÃO
+        st.radio("Filtro Rápido (Situação M4):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="m4_situacao")
+        
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
-        st.selectbox("Filtro por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
+        st.selectbox("Filtro detalhado por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
@@ -212,6 +231,14 @@ if painel_selecionado == "Esporádicas":
     df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Análise realizada?", "Mês"])
 
     df_filtered = df.copy()
+    
+    # Filtro Rápido de Botões (Abertas / Encerradas)
+    if st.session_state.esp_situacao == "Encerradas":
+        df_filtered = df_filtered[df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+    elif st.session_state.esp_situacao == "Abertas":
+        df_filtered = df_filtered[~df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+
+    # Filtros Tradicionais
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
@@ -273,6 +300,13 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
     
+    # Filtro Rápido de Botões (Abertas / Encerradas)
+    if st.session_state.m4_situacao == "Encerradas":
+        df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+    elif st.session_state.m4_situacao == "Abertas":
+        df_m4_filtered = df_m4_filtered[~df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+
+    # Filtros Tradicionais
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
