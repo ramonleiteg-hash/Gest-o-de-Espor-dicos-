@@ -62,9 +62,13 @@ def load_data(file):
                 if col not in df.columns:
                     df[col] = "Não Classificado"
             
+            # Preencher células vazias na coluna Mês (células mescladas do Excel)
             df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
+            
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
             df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
+            df["Mês"] = df["Mês"].astype(str).str.strip()
+            
             df = df.dropna(subset=["NOTAS"])
             
             return df
@@ -196,7 +200,6 @@ with tab2:
                 hole=0.5,
                 color_discrete_sequence=px.colors.qualitative.Prism
             )
-            # Força o texto para dentro do gráfico e ajusta o tamanho da fonte
             fig_donut.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
@@ -206,17 +209,20 @@ with tab2:
     with col_chart_right:
         st.markdown("##### 📈 Notas por Mês")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
-            mes_counts = df_filtered["Mês"].value_counts().reset_index()
+            # Agrupamento correto por contagem exata de notas por mês
+            mes_counts = df_filtered.groupby("Mês", as_index=False).size()
             mes_counts.columns = ["Mês", "Quantidade"]
             
             fig_bar = px.bar(
                 mes_counts,
                 x="Mês",
                 y="Quantidade",
+                text="Quantidade",
                 color="Mês",
                 color_discrete_sequence=px.colors.qualitative.Safe
             )
-            fig_bar.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
+            fig_bar.update_traces(textposition='auto')
+            fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Nenhum dado encontrado.")
