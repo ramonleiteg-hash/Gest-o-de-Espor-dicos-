@@ -44,10 +44,12 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             else:
                 df_raw = pd.read_excel(file, header=None)
             
+            # Aumentado para procurar nas 15 primeiras linhas
             header_row = 0
-            for idx, row in df_raw.head(10).iterrows():
+            for idx, row in df_raw.head(15).iterrows():
                 row_str = " ".join([normalize_text(str(val)) for val in row.values])
-                if 'NOTA' in row_str or 'EQUIP' in row_str or 'AREA' in row_str or 'M4' in row_str:
+                # Palavras-chave expandidas para garantir que ache a linha correta
+                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA']):
                     header_row = idx
                     break
             
@@ -69,7 +71,7 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
                     rename_dict[col] = 'ÁREA'
                 elif 'ANALIS' in norm_col:
                     rename_dict[col] = 'Análise realizada?'
-                elif 'STATUS' in norm_col:
+                elif 'STATUS' in norm_col or 'SITUA' in norm_col:
                     rename_dict[col] = 'Status M4'
                 elif 'MES' in norm_col:
                     rename_dict[col] = 'Mês'
@@ -78,32 +80,32 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             
             if tipo == "esporadica":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
-                for col in expected_cols:
-                    if col not in df.columns:
-                        df[col] = "Não Classificado"
-                if 'Mês' in df.columns:
-                    df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
-                df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-                df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
-                df["Mês"] = df["Mês"].astype(str).str.strip()
-            else: # M4
+            else:
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Status M4", "Mês"]
-                for col in expected_cols:
-                    if col not in df.columns:
-                        df[col] = "Não Classificado"
-                if 'Mês' in df.columns:
-                    df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
-                df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-                df["Mês"] = df["Mês"].astype(str).str.strip()
 
-            df = df.dropna(subset=["NOTAS"])
-            df = df[df["NOTAS"].astype(str).str.upper() != "NOTAS"]
+            for col in expected_cols:
+                if col not in df.columns:
+                    df[col] = "Não Classificado"
+            
+            if 'Mês' in df.columns:
+                df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
+                
+            df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
+            df["Mês"] = df["Mês"].astype(str).str.strip()
+            
+            if "Análise realizada?" in df.columns:
+                df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
+
+            if "NOTAS" in df.columns:
+                df = df.dropna(subset=["NOTAS"])
+                df = df[df["NOTAS"].astype(str).str.upper() != "NOTAS"]
+                
             return df
         except Exception as e:
-            st.error(f"Erro ao ler o arquivo: {e}")
-            return None
+            st.error("⚠️ Ocorreu um desvio no padrão da planilha, mas a aplicação foi mantida no ar.")
+            return None # Tratado de forma segura mais abaixo
     else:
-        # Dados de Demonstração padrão caso nenhum arquivo seja enviado
+        # Dados de Demonstração padrão
         if tipo == "esporadica":
             return pd.DataFrame({
                 "NOTAS": ["26161958", "26153640", "26173261", "26174250"],
@@ -143,7 +145,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("📂 Carregamento de Dados")
     
-    # Uploader específico dependendo da aba ativa para evitar conflito
     if st.session_state.pagina_ativa == 'Esporadicas':
         file_esporadica = st.file_uploader("Carregar planilha Esporádicas (Excel/CSV)", type=["xlsx", "xls", "csv"], key="up_esp")
         df = ler_planilha_inteligente(file_esporadica, tipo="esporadica")
@@ -155,8 +156,12 @@ with st.sidebar:
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
 # -------------------------------------------------------------------------
 if st.session_state.pagina_ativa == 'Esporadicas':
+    # Trava de segurança caso o arquivo venha corrompido ou fora do formato
+    if df is None:
+        df = pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"])
+
     with st.sidebar:
-        if df is not None and not df.empty:
+        if not df.empty:
             st.markdown("---")
             st.subheader("Filtros Esporádicas")
             area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df["ÁREA"].dropna().unique())))
@@ -191,7 +196,7 @@ if st.session_state.pagina_ativa == 'Esporadicas':
     
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     total_notas = len(df_filtered)
-    total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].str.lower().str.contains("sim", na=False)])
+    total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
     with col_kpi1:
@@ -221,7 +226,7 @@ if st.session_state.pagina_ativa == 'Esporadicas':
     col_chart_left, col_chart_right = st.columns(2)
     with col_chart_left:
         st.markdown("##### 🚨 Distribuição por Área (%)")
-        if not df_filtered.empty:
+        if not df_filtered.empty and "ÁREA" in df_filtered.columns:
             area_counts = df_filtered["ÁREA"].value_counts().reset_index()
             area_counts.columns = ["Área", "Quantidade"]
             fig_donut = px.pie(area_counts, names="Área", values="Quantidade", hole=0.5, color_discrete_sequence=px.colors.qualitative.Prism)
@@ -229,7 +234,7 @@ if st.session_state.pagina_ativa == 'Esporadicas':
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
         else:
-            st.info("Nenhum dado encontrado.")
+            st.info("Nenhum dado encontrado para o gráfico.")
 
     with col_chart_right:
         st.markdown("##### 📈 Notas por Mês")
@@ -241,7 +246,7 @@ if st.session_state.pagina_ativa == 'Esporadicas':
             fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
-            st.info("Nenhum dado encontrado.")
+            st.info("Nenhum dado encontrado para o gráfico.")
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
@@ -251,8 +256,12 @@ if st.session_state.pagina_ativa == 'Esporadicas':
 # TELA 2: GESTÃO DE NOTAS M4
 # -------------------------------------------------------------------------
 elif st.session_state.pagina_ativa == 'M4':
+    # Trava de segurança para a tabela M4
+    if df_m4 is None:
+        df_m4 = pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status M4", "Mês"])
+
     with st.sidebar:
-        if df_m4 is not None and not df_m4.empty:
+        if not df_m4.empty:
             st.markdown("---")
             st.subheader("Filtros M4")
             area_m4_opt = st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_m4["ÁREA"].dropna().unique())))
@@ -262,6 +271,7 @@ elif st.session_state.pagina_ativa == 'M4':
             area_m4_opt, mes_m4_opt, search_m4 = "Todos", "Todos", ""
 
     df_m4_filtered = df_m4.copy()
+    
     if area_m4_opt != "Todos":
         df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == area_m4_opt]
     if mes_m4_opt != "Todos":
