@@ -207,7 +207,9 @@ if st.session_state.pagina_ativa == 'Esporadicas':
     
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     total_notas = len(df_filtered)
-    total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
+    
+    # PROTEÇÃO ADCIONADA AQUI (astype(str))
+    total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].astype(str).str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
     with col_kpi1:
@@ -309,7 +311,8 @@ elif st.session_state.pagina_ativa == 'M4':
             </div>
         """, unsafe_allow_html=True)
     with k2:
-        pendentes = len(df_m4_filtered[df_m4_filtered["Status M4"].str.lower().str.contains("pendente", na=False)]) if "Status M4" in df_m4_filtered.columns else 0
+        # PROTEÇÃO ADICIONADA AQUI (.astype(str) ANTES DO .str.lower)
+        pendentes = len(df_m4_filtered[df_m4_filtered["Status M4"].astype(str).str.lower().str.contains("pendente", na=False)]) if "Status M4" in df_m4_filtered.columns else 0
         st.markdown(f"""
             <div class="metric-card" style="text-align: center; border-left-color: #f57c00;">
                 <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Notas Pendentes</p>
