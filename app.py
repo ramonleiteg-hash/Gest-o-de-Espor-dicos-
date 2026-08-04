@@ -35,8 +35,8 @@ def normalize_text(text):
 # ESTADOS E CONTROLE DE FILTROS
 # -------------------------------------------------------------------------
 filtros_keys = [
-    'esp_situacao', 'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
-    'm4_situacao', 'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
+    'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
+    'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
 ]
 
 # Inicializa as variáveis na memória para os filtros funcionarem
@@ -44,8 +44,6 @@ for k in filtros_keys:
     if k not in st.session_state:
         if 'pesquisa' in k:
             st.session_state[k] = ""
-        elif 'situacao' in k:
-            st.session_state[k] = "Todas"
         else:
             st.session_state[k] = "Todos"
 
@@ -54,13 +52,11 @@ def limpar_filtros():
     for k in filtros_keys:
         if 'pesquisa' in k:
             st.session_state[k] = ""
-        elif 'situacao' in k:
-            st.session_state[k] = "Todas"
         else:
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -139,8 +135,10 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
                 def classificar_status(val):
                     val_str = str(val).upper()
+                    # Regra exata: se tiver MSEN, MREL ou ORDA (além de TECO/CONC), é Encerrada
                     if any(x in val_str for x in ['MSEN', 'MREL', 'ORDA', 'ORDAN', 'ENCE', 'TECO', 'CONC']):
                         return "Encerrada"
+                    # Se for MSPN ou outra sigla, é Aberta
                     return "Aberta"
                 df["Status"] = df["Status SAP"].apply(classificar_status)
             # ----------------------------------------------------
@@ -158,9 +156,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 df['Mês'] = df['Mês'].ffill().fillna("Não Informado").astype(str).str.strip()
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-            
-            # ATENÇÃO: Aqui definimos a capitalização correta para não bugar a leitura!
-            df["Status"] = df["Status"].astype(str).str.strip().str.capitalize()
             
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
@@ -217,22 +212,20 @@ with st.sidebar:
     st.subheader(f"Filtros - {painel_selecionado}")
     
     if painel_selecionado == "Esporádicas":
-        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status SAP", "Análise realizada?", "Mês"])
+        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
         
-        st.radio("Filtro Rápido (Situação):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="esp_situacao")
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        # Filtro detalhado buscando pela coluna Status SAP
-        st.selectbox("Filtro Detalhado (Status SAP):", ["Todos"] + sorted(list(df_ref["Status SAP"].dropna().unique())), key="esp_status")
+        # Filtro Detalhado direto com Aberta / Encerrada
+        st.selectbox("Filtro por Status do Sistema:", ["Todos", "Aberta", "Encerrada"], key="esp_status")
         st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
         st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df_ref["Mês"].dropna().unique())), key="esp_mes")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
-        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status SAP", "Mês"])
+        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
         
-        st.radio("Filtro Rápido (Situação M4):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="m4_situacao")
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
-        # Filtro detalhado buscando pela coluna Status SAP
-        st.selectbox("Filtro Detalhado (Status SAP M4):", ["Todos"] + sorted(list(df_ref_m4["Status SAP"].dropna().unique())), key="m4_status")
+        # Filtro Detalhado direto com Aberta / Encerrada
+        st.selectbox("Filtro por Status do Sistema (M4):", ["Todos", "Aberta", "Encerrada"], key="m4_status")
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
@@ -246,12 +239,9 @@ if painel_selecionado == "Esporádicas":
 
     df_filtered = df.copy()
 
-    # Aplicação dos Filtros
-    if st.session_state.esp_situacao == "Encerradas": df_filtered = df_filtered[df_filtered["Status"] == "Encerrada"]
-    elif st.session_state.esp_situacao == "Abertas": df_filtered = df_filtered[df_filtered["Status"] == "Aberta"]
-    
+    # Aplicação dos Filtros atualizados
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
-    if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status SAP"] == st.session_state.esp_status]
+    if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
     if st.session_state.esp_mes != "Todos": df_filtered = df_filtered[df_filtered["Mês"] == st.session_state.esp_mes]
     if st.session_state.esp_pesquisa:
@@ -307,9 +297,9 @@ if painel_selecionado == "Esporádicas":
                 'borderwidth': 2,
                 'bordercolor': "gray",
                 'steps': [
-                    {'range': [0, 50], 'color': '#ffebee'},    # Vermelho claro
-                    {'range': [50, 80], 'color': '#fff9c4'},   # Amarelo claro
-                    {'range': [80, 100], 'color': '#c8e6c9'}], # Verde claro
+                    {'range': [0, 50], 'color': '#ffebee'},
+                    {'range': [50, 80], 'color': '#fff9c4'},
+                    {'range': [80, 100], 'color': '#c8e6c9'}],
                 'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 90}
             }
         ))
@@ -367,12 +357,9 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
     
-    # Aplicação dos Filtros
-    if st.session_state.m4_situacao == "Encerradas": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == "Encerrada"]
-    elif st.session_state.m4_situacao == "Abertas": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == "Aberta"]
-    
+    # Aplicação dos Filtros atualizados
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
-    if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status SAP"] == st.session_state.m4_status]
+    if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
     if st.session_state.m4_pesquisa:
         mask = df_m4_filtered.astype(str).apply(lambda x: x.str.contains(st.session_state.m4_pesquisa, case=False)).any(axis=1)
