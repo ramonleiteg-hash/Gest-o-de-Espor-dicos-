@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------------
-# CARREGAMENTO E TRATAMENTO DOS DADOS (Sem a coluna ORDENS)
+# CARREGAMENTO E TRATAMENTO DOS DADOS
 # -------------------------------------------------------------------------
 @st.cache_data
 def load_data(file):
@@ -35,13 +35,13 @@ def load_data(file):
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de dados simulada sem a coluna ORDENS
+        # Base de demonstração mais fiel às áreas reais da usina
         data = {
-            "NOTAS": ["N001", "N002", "N003", "N004", "N005", "N006"],
-            "EQUIPAMENTO": ["Ventilador 1", "Compressor Centac", "Bomba PU152", "Forno 3", "Subestação Principal", "Caldeira B"],
-            "ÁREA": ["REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "REDUÇÃO", "ENERGIA E UTILIDADES", "ENERGIA E UTILIDADES"],
-            "Análise realizada?": ["Sim", "Não", "Sim", "Sim", "Não", "Sim"],
-            "Mês": ["Jan 2026", "Fev 2026", "Mar 2026", "Abr 2026", "Mai 2026", "Jun 2026"]
+            "NOTAS": ["26161958", "26153640", "26173261", "26174250", "26174646", "28802523", "28991179", "29112101", "29296899", "29411397"],
+            "EQUIPAMENTO": ["redutor ac. travasso", "correia transportadora C206", "COMPRESSOR 5", "motor da TC_02", "CT B-202.1", "RECEBIMENTO E ENVIO", "MOTOR BRF2", "M1 VE-15", "MOTOR 1 SIT. HIDR.", "Exaustor SDAC2"],
+            "ÁREA": ["SINTERIZAÇÃO", "PÁTIO DE CARVÃO", "PLANTA DE MOAGEM", "PLANTA DE MOAGEM", "SINTERIZAÇÃO", "Patio de Carvão", "ALTO FORNO 3", "SISTEMA DE MOAGEM 1", "LTQ", "ATF3"],
+            "Análise realizada?": ["sim", "sim", "sim", "sim", "sim", "Sim", "SIM", "Sim", "Sim", "SIM"],
+            "Mês": ["Jan 2026", "Jan 2026", "Fev 2026", "Fev 2026", "Mar 2026", "out/25", "nov/25", "jan/26", "mar/26", "abr/26"]
         }
         return pd.DataFrame(data)
 
@@ -63,10 +63,14 @@ with st.sidebar:
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Não Classificado"
+        
+        # Padronizar texto das colunas para evitar duplicidades por letras maiúsculas/minúsculas
+        df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
+        df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
 
         # Filtros ajustados para as colunas reais da planilha
-        area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + list(df["ÁREA"].dropna().unique()))
-        analise_opt = st.selectbox("Filtro por Análise realizada?:", ["Todos"] + list(df["Análise realizada?"].dropna().unique()))
+        area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df["ÁREA"].dropna().unique())))
+        analise_opt = st.selectbox("Filtro por Análise realizada?:", ["Todos"] + sorted(list(df["Análise realizada?"].dropna().unique())))
         mes_opt = st.selectbox("Filtro por Mês:", ["Todos"] + list(df["Mês"].dropna().unique()))
         
         search_query = st.text_input("🔍 Pesquisa Geral (Qualquer campo):", "")
@@ -164,9 +168,9 @@ with tab2:
                 names="Área", 
                 values="Quantidade", 
                 hole=0.5,
-                color_discrete_sequence=px.colors.qualitative.Pastel
+                color_discrete_sequence=px.colors.qualitative.Prism
             )
-            fig_donut.update_traces(textinfo="percent+label", textfont_size=12)
+            fig_donut.update_traces(textinfo="percent+label", textfont_size=11)
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
         else:
@@ -176,7 +180,7 @@ with tab2:
         st.markdown("##### 📈 Notas por Mês")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
             mes_counts = df_filtered["Mês"].value_counts().reset_index()
-            mes_counts.columns = ["Mês", "Quantidade"]
+            mes_counts.columns = colnames = ["Mês", "Quantidade"]
             
             fig_bar = px.bar(
                 mes_counts,
