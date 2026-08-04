@@ -34,19 +34,35 @@ if 'pagina_ativa' not in st.session_state:
     st.session_state.pagina_ativa = 'Esporadicas'
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE DA PLANILHA (ESPORÁDICAS)
+# LEITOR INTELIGENTE AUTOMÁTICO DA PLANILHA (DETECTOR DE CABEÇALHO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def load_data_esporadicas(file):
     if file is not None:
         try:
+            # 1. Lê a planilha crua sem cabeçalho para localizar a linha correta das colunas
             if file.name.endswith('.csv'):
-                df = pd.read_csv(file)
+                df_raw = pd.read_csv(file, header=None)
             else:
-                df = pd.read_excel(file, header=1)
+                df_raw = pd.read_excel(file, header=None)
+            
+            # 2. Procura nas primeiras 10 linhas qual delas contém os títulos reais
+            header_row = 0
+            for idx, row in df_raw.head(10).iterrows():
+                row_str = " ".join([normalize_text(str(val)) for val in row.values])
+                if 'NOTA' in row_str or 'EQUIP' in row_str or 'AREA' in row_str:
+                    header_row = idx
+                    break
+            
+            # 3. Faz a leitura definitiva usando a linha correta descoberta
+            if file.name.endswith('.csv'):
+                df = pd.read_csv(file, header=header_row)
+            else:
+                df = pd.read_excel(file, header=header_row)
             
             df.columns = df.columns.astype(str).str.strip()
             
+            # Mapeamento flexível das colunas
             rename_dict = {}
             for col in df.columns:
                 norm_col = normalize_text(col)
@@ -69,13 +85,17 @@ def load_data_esporadicas(file):
                     df[col] = "Não Classificado"
             
             # Preencher células vazias na coluna Mês (células mescladas do Excel)
-            df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
+            if 'Mês' in df.columns:
+                df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
             
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
             df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
             df["Mês"] = df["Mês"].astype(str).str.strip()
             
+            # Remove linhas vazias ou repetições do cabeçalho na tabela
             df = df.dropna(subset=["NOTAS"])
+            df = df[df["NOTAS"].astype(str).str.upper() != "NOTAS"]
+            
             return df
         except Exception as e:
             st.error(f"Erro ao ler o arquivo: {e}")
@@ -92,7 +112,6 @@ def load_data_esporadicas(file):
 
 @st.cache_data
 def load_data_m4(file):
-    # Dados de exemplo específicos para M4
     return pd.DataFrame({
         "NOTAS M4": ["M4-901", "M4-902", "M4-903", "M4-904", "M4-905"],
         "EQUIPAMENTO": ["Turbina TRT", "Exaustor EG11", "Forno 5", "Caldeira B", "Ponte Rolante"],
@@ -130,7 +149,6 @@ with st.sidebar:
 if st.session_state.pagina_ativa == 'Esporadicas':
     df = load_data_esporadicas(uploaded_file)
     
-    # Filtros na barra lateral dinâmicos baseados na planilha carregada
     with st.sidebar:
         if df is not None and not df.empty:
             st.markdown("---")
@@ -141,7 +159,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
         else:
             area_opt, analise_opt, mes_opt, search_query = "Todos", "Todos", "Todos", ""
 
-    # Aplicando filtros
     df_filtered = df.copy()
     if area_opt != "Todos":
         df_filtered = df_filtered[df_filtered["ÁREA"] == area_opt]
@@ -153,7 +170,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
         mask = df_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
 
-    # Cabeçalho Principal
     col_title, col_btn = st.columns([6, 1])
     with col_title:
         st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas Esporádicas Redução/Energia</span>", unsafe_allow_html=True)
@@ -167,7 +183,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
     st.markdown("---")
     st.markdown("### 📌 NOTAS")
     
-    # KPIs
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     total_notas = len(df_filtered)
     total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].str.lower().str.contains("sim", na=False)])
@@ -197,7 +212,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gráficos
     col_chart_left, col_chart_right = st.columns(2)
     with col_chart_left:
         st.markdown("##### 🚨 Distribuição por Área (%)")
