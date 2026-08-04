@@ -53,7 +53,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM REMOÇÃO DE LINHAS DE TOTAL)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -127,7 +127,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             df = df.rename(columns=rename_dict)
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
-            # --- TRADUTOR DE STATUS SAP (Regra Exata) ---
+            # --- TRADUTOR DE STATUS SAP ---
             if "Status" in df.columns:
                 df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
                 def classificar_status(val):
@@ -136,7 +136,10 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                         return "Encerrada"
                     return "Aberta"
                 df["Status"] = df["Status SAP"].apply(classificar_status)
-            # ---------------------------------------------
+            else:
+                df["Status"] = "Encerrada"
+                df["Status SAP"] = "N/A"
+            # -----------------------------
 
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status", "Status SAP"]
@@ -158,7 +161,8 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
 
             if "NOTAS" in df.columns:
                 df = df.dropna(subset=["NOTAS"])
-                df = df[df["NOTAS"].astype(str).str.upper() != "NOTAS"]
+                # Remove linhas indesejadas de cabeçalho repetido ou linhas de Total do SAP
+                df = df[~df["NOTAS"].astype(str).str.upper().str.contains("TOTAL|SOMA|MEDIA|NOTAS", na=False)]
                 
             return df
         except Exception as e:
@@ -166,7 +170,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             return None 
     else:
         if tipo == "esporádicas":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Encerrada"], "Status SAP": ["N/A", "N/A", "N/A"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
         else:
             return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
 
@@ -209,7 +213,6 @@ with st.sidebar:
     if painel_selecionado == "Esporádicas":
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status"])
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        st.selectbox("Filtro por Status:", ["Todos", "Aberta", "Encerrada"], key="esp_status")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
         df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status"])
@@ -228,7 +231,6 @@ if painel_selecionado == "Esporádicas":
     df_filtered = df.copy()
 
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
-    if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_pesquisa:
         mask = df_filtered.astype(str).apply(lambda x: x.str.contains(st.session_state.esp_pesquisa, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
@@ -237,8 +239,8 @@ if painel_selecionado == "Esporádicas":
     
     col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
-    encerradas = len(df_filtered[df_filtered["Status"] == "Encerrada"])
-    abertas = len(df_filtered[df_filtered["Status"] == "Aberta"])
+    encerradas = total_notas
+    abertas = 0
     total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].astype(str).str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
@@ -268,7 +270,7 @@ if painel_selecionado == "Esporádicas":
 
     with col_chart_right:
         st.markdown("##### 🌡️ Termômetro de Conclusão")
-        taxa_conclusao = (encerradas / total_notas * 100) if total_notas > 0 else 0
+        taxa_conclusao = 100.0 if total_notas > 0 else 0
         fig_gauge = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = taxa_conclusao,
@@ -289,32 +291,19 @@ if painel_selecionado == "Esporádicas":
         fig_gauge.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # Gráfico de Evolução Histórica (Apenas Colunas - Total vs Encerradas)
     st.markdown("##### 📊 Evolução Histórica (Gráfico de Colunas)")
     if not df_filtered.empty and "Mês" in df_filtered.columns:
         df_chart = df_filtered.copy()
         df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
         df_chart["Mês_Formatado"] = df_chart["Mês_Formatado"].fillna(df_chart["Mês"])
         
-        grouped = df_chart.groupby(["Mês_Formatado", "Status"]).size().unstack(fill_value=0).reset_index()
-        if 'Encerrada' not in grouped.columns: grouped['Encerrada'] = 0
-        if 'Aberta' not in grouped.columns: grouped['Aberta'] = 0
-        
-        grouped['Total'] = grouped['Aberta'] + grouped['Encerrada']
+        grouped = df_chart.groupby("Mês_Formatado").size().reset_index(name='Total')
         grouped = grouped.sort_values("Mês_Formatado")
         
         fig_evo = go.Figure()
-        
-        # Coluna Total de Notas (Verde Claro)
         fig_evo.add_trace(go.Bar(
             x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', 
-            marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
-        ))
-        
-        # Coluna Encerradas (Verde Escuro)
-        fig_evo.add_trace(go.Bar(
-            x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', 
-            marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')
+            marker_color='#2e7d32', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
         ))
         
         fig_evo.update_layout(
@@ -327,8 +316,7 @@ if painel_selecionado == "Esporádicas":
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
-    cols_order = [c for c in df_filtered.columns if c not in ["Status", "Status SAP"]] + ["Status", "Status SAP"]
-    st.dataframe(df_filtered[cols_order], use_container_width=True)
+    st.dataframe(df_filtered, use_container_width=True)
 
 # -------------------------------------------------------------------------
 # TELA 2: GESTÃO DE NOTAS M4
@@ -409,14 +397,10 @@ else:
         grouped_m4 = grouped_m4.sort_values("Mês_Formatado")
         
         fig_evo_m4 = go.Figure()
-        
-        # Coluna Total de Notas (Verde Claro)
         fig_evo_m4.add_trace(go.Bar(
             x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', 
             marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')
         ))
-        
-        # Coluna Encerradas (Azul)
         fig_evo_m4.add_trace(go.Bar(
             x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', 
             marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')
