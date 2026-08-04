@@ -19,7 +19,6 @@ st.markdown("""
         .main { background-color: #f8f9fa; }
         .stButton>button { width: 100%; border-radius: 4px; font-weight: bold; }
         .metric-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border-left: 5px solid #1b5e20; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        /* Ajuste do botão Limpar Filtros na sidebar */
         [data-testid="stSidebar"] button { margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
@@ -32,14 +31,13 @@ def normalize_text(text):
     return "".join([c for c in nfkd if not unicodedata.combining(c)]).upper().strip()
 
 # -------------------------------------------------------------------------
-# ESTADOS E CONTROLE DE FILTROS (Sem Mês e sem Análise)
+# ESTADOS E CONTROLE DE FILTROS
 # -------------------------------------------------------------------------
 filtros_keys = [
     'esp_area', 'esp_status', 'esp_pesquisa', 
     'm4_area', 'm4_status', 'm4_pesquisa'
 ]
 
-# Inicializa as variáveis na memória para os filtros funcionarem
 for k in filtros_keys:
     if k not in st.session_state:
         if 'pesquisa' in k:
@@ -48,7 +46,6 @@ for k in filtros_keys:
             st.session_state[k] = "Todos"
 
 def limpar_filtros():
-    """Função engatilhada ao clicar no botão de limpar filtros"""
     for k in filtros_keys:
         if 'pesquisa' in k:
             st.session_state[k] = ""
@@ -56,7 +53,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP CORRIGIDO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -130,17 +127,18 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             df = df.rename(columns=rename_dict)
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
-            # --- TRADUTOR DE STATUS SAP PARA ABERTA/ENCERRADA ---
+            # --- TRADUTOR DE STATUS SAP (Regra Ajustada para MSEN / MREL) ---
             if "Status" in df.columns:
                 df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
                 def classificar_status(val):
                     val_str = str(val).upper()
-                    # Regra: se tiver MSEN, MREL ou ORDA (além de TECO/CONC), é Encerrada
-                    if any(x in val_str for x in ['MSEN', 'MREL', 'ORDA', 'ORDAN', 'ENCE', 'TECO', 'CONC']):
+                    # Condição de Encerrada: precisa conter MSEN ou MREL (ou códigos finais de encerramento)
+                    if any(x in val_str for x in ['MSEN', 'MREL', 'ENCE', 'TECO', 'CONC']):
                         return "Encerrada"
-                    return "Aberta" # Caso contrário (como MSPN), é Aberta
+                    # Caso contrário (como MSPN ou ORDA isolado sem MSEN), é Aberta
+                    return "Aberta"
                 df["Status"] = df["Status SAP"].apply(classificar_status)
-            # ----------------------------------------------------
+            # ----------------------------------------------------------------
 
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status", "Status SAP"]
@@ -169,14 +167,13 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             st.error(f"⚠️ Erro ao processar a aba '{tipo}': {str(e)}")
             return None 
     else:
-        # Dados padrão
         if tipo == "esporádicas":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN ORDA", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
         else:
-            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN ORDA", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
+            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
 
 # -------------------------------------------------------------------------
-# CABEÇALHO PRINCIPAL E RÁDIOS DE NAVEGAÇÃO
+# CABEÇALHO PRINCIPAL E NAVEGAÇÃO
 # -------------------------------------------------------------------------
 col_t1, col_t2 = st.columns([6, 1])
 with col_t1:
@@ -188,7 +185,7 @@ painel_selecionado = st.radio("Selecione o Painel para Visualização:", ["Espor
 st.markdown("---")
 
 # -------------------------------------------------------------------------
-# BARRA LATERAL (UPLOADER, FILTROS E BOTÃO LIMPAR)
+# BARRA LATERAL (UPLOADER E FILTROS)
 # -------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### <span style='color: #1b5e20; font-size: 26px; font-weight: bold;'>🟢 USIMINAS</span>", unsafe_allow_html=True)
@@ -212,14 +209,12 @@ with st.sidebar:
     st.subheader(f"Filtros - {painel_selecionado}")
     
     if painel_selecionado == "Esporádicas":
-        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
-        
+        df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status"])
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
         st.selectbox("Filtro por Status:", ["Todos", "Aberta", "Encerrada"], key="esp_status")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
-        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
-        
+        df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status"])
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
         st.selectbox("Filtro por Status (M4):", ["Todos", "Aberta", "Encerrada"], key="m4_status")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
@@ -230,11 +225,10 @@ with st.sidebar:
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
 # -------------------------------------------------------------------------
 if painel_selecionado == "Esporádicas":
-    df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Análise realizada?", "Mês"])
+    df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
 
     df_filtered = df.copy()
 
-    # Aplicação dos Filtros Ativos
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_pesquisa:
@@ -243,7 +237,6 @@ if painel_selecionado == "Esporádicas":
 
     st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Esporádicas &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas exibidas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
     
-    # Cálculos dos KPIs
     col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
     encerradas = len(df_filtered[df_filtered["Status"] == "Encerrada"])
@@ -264,7 +257,6 @@ if painel_selecionado == "Esporádicas":
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gráficos Superiores
     col_chart_left, col_chart_right = st.columns(2)
     with col_chart_left:
         st.markdown("##### 🚨 Distribuição por Área (%)")
@@ -299,7 +291,6 @@ if painel_selecionado == "Esporádicas":
         fig_gauge.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # Gráfico Inferior Full Width
     st.markdown("##### 📉 Evolução Histórica (Burn-down)")
     if not df_filtered.empty and "Mês" in df_filtered.columns:
         df_chart = df_filtered.copy()
@@ -314,28 +305,11 @@ if painel_selecionado == "Esporádicas":
         grouped = grouped.sort_values("Mês_Formatado")
         
         fig_evo = go.Figure()
+        fig_evo.add_trace(go.Bar(x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')))
+        fig_evo.add_trace(go.Bar(x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')))
+        fig_evo.add_trace(go.Scatter(x=grouped['Mês_Formatado'], y=grouped['Aberta'], name='Abertas (Pendentes)', mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), text=grouped['Aberta'], textposition='top center', textfont=dict(weight='bold')))
         
-        fig_evo.add_trace(go.Bar(
-            x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', 
-            marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo.add_trace(go.Bar(
-            x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', 
-            marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo.add_trace(go.Scatter(
-            x=grouped['Mês_Formatado'], y=grouped['Aberta'], name='Abertas (Pendentes)', 
-            mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
-            text=grouped['Aberta'], textposition='top center', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo.update_layout(
-            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-            xaxis_title="", yaxis_title="Quantidade"
-        )
+        fig_evo.update_layout(barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis_title="", yaxis_title="Quantidade")
         fig_evo.update_yaxes(range=[0, grouped['Total'].max() * 1.15])
         st.plotly_chart(fig_evo, use_container_width=True)
 
@@ -350,7 +324,6 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
     
-    # Aplicação dos Filtros Ativos
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_pesquisa:
@@ -359,7 +332,6 @@ else:
 
     st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Notas M4 &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas exibidas:</b> {len(df_m4_filtered):,}</p>", unsafe_allow_html=True)
     
-    # Cálculos dos KPIs
     col_k1, col_k2, col_k3, col_k4 = st.columns(4)
     total_m4 = len(df_m4_filtered)
     encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"] == "Encerrada"])
@@ -377,7 +349,6 @@ else:
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gráficos Superiores
     col_chart_m1, col_chart_m2 = st.columns(2)
     with col_chart_m1:
         st.markdown("##### 🚨 M4 - Distribuição por Área (%)")
@@ -412,7 +383,6 @@ else:
         fig_gauge_m4.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
         st.plotly_chart(fig_gauge_m4, use_container_width=True)
 
-    # Gráfico Inferior Full Width
     st.markdown("##### 📉 Evolução Histórica M4 (Burn-down)")
     if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
         df_chart_m4 = df_m4_filtered.copy()
@@ -427,28 +397,11 @@ else:
         grouped_m4 = grouped_m4.sort_values("Mês_Formatado")
         
         fig_evo_m4 = go.Figure()
+        fig_evo_m4.add_trace(go.Bar(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')))
+        fig_evo_m4.add_trace(go.Bar(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')))
+        fig_evo_m4.add_trace(go.Scatter(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Aberta'], name='Abertas (Pendentes)', mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), text=grouped_m4['Aberta'], textposition='top center', textfont=dict(weight='bold')))
         
-        fig_evo_m4.add_trace(go.Bar(
-            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', 
-            marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo_m4.add_trace(go.Bar(
-            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', 
-            marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo_m4.add_trace(go.Scatter(
-            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Aberta'], name='Abertas (Pendentes)', 
-            mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), 
-            text=grouped_m4['Aberta'], textposition='top center', textfont=dict(weight='bold')
-        ))
-        
-        fig_evo_m4.update_layout(
-            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-            xaxis_title="", yaxis_title="Quantidade"
-        )
+        fig_evo_m4.update_layout(barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis_title="", yaxis_title="Quantidade")
         fig_evo_m4.update_yaxes(range=[0, grouped_m4['Total'].max() * 1.15])
         st.plotly_chart(fig_evo_m4, use_container_width=True)
 
