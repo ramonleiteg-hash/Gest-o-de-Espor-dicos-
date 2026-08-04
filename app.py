@@ -16,7 +16,7 @@ st.markdown("""
     <style>
         .main { background-color: #f8f9fa; }
         .stButton>button { width: 100%; border-radius: 4px; font-weight: bold; }
-        .metric-card { background-color: #ffffff; padding: 20px; border-radius: 8px; border-left: 5px solid #1b5e20; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border-left: 5px solid #1b5e20; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -31,18 +31,16 @@ def normalize_text(text):
 # ESTADO DE NAVEGAÇÃO
 # -------------------------------------------------------------------------
 if 'pagina_ativa' not in st.session_state:
-    st.session_state.pagina_ativa = 'Esporadicas'
+    st.session_state.pagina_ativa = 'Esporádicas'
 
 # -------------------------------------------------------------------------
 # LEITOR INTELIGENTE AUTOMÁTICO (ABAS SEPARADAS)
 # -------------------------------------------------------------------------
-@st.cache_data  # <-- CORREÇÃO FEITA AQUI (Removido o experimental_allow_widgets)
-def ler_planilha_inteligente(file, tipo="esporadica"):
+@st.cache_data
+def ler_planilha_inteligente(file, tipo="esporádicas"):
     if file is not None:
         try:
             is_csv = file.name.endswith('.csv')
-            
-            # Reseta o ponteiro de leitura do arquivo
             file.seek(0)
             
             # Descobre qual aba (sheet) deve ser lida
@@ -50,10 +48,11 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             if not is_csv:
                 xls = pd.ExcelFile(file)
                 for s in xls.sheet_names:
-                    if tipo == "esporadica" and 'espor' in s.lower():
+                    norm_s = normalize_text(s).lower()
+                    if tipo == "esporádicas" and 'espor' in norm_s:
                         sheet_target = s
                         break
-                    elif tipo == "m4" and 'm4' in s.lower():
+                    elif tipo == "m4" and 'm4' in norm_s:
                         sheet_target = s
                         break
             
@@ -74,7 +73,7 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             
             file.seek(0)
             
-            # Leitura final usando a linha correta e a aba correta
+            # Leitura final
             if is_csv:
                 df = pd.read_csv(file, header=header_row)
             else:
@@ -82,7 +81,7 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
             
             df.columns = df.columns.astype(str).str.strip()
             
-            # Mapeamento dinâmico
+            # Mapeamento dinâmico (Capturando STATUS DO SISTEMA para ambas as planilhas)
             rename_dict = {}
             for col in df.columns:
                 norm_col = normalize_text(col)
@@ -95,14 +94,18 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
                 elif 'ANALIS' in norm_col:
                     rename_dict[col] = 'Análise realizada?'
                 elif any(x in norm_col for x in ['STATUS', 'SITUA', 'ESTADO']):
-                    rename_dict[col] = 'Status M4'
+                    rename_dict[col] = 'Status'
                 elif any(x in norm_col for x in ['MES', 'DATA', 'CRIACAO']):
                     if 'Mês' not in rename_dict.values(): rename_dict[col] = 'Mês'
             
             df = df.rename(columns=rename_dict)
             
-            # Verifica e cria colunas obrigatórias faltantes
-            expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"] if tipo == "esporadica" else ["NOTAS", "EQUIPAMENTO", "ÁREA", "Status M4", "Mês"]
+            # Verifica e cria colunas obrigatórias
+            if tipo == "esporádicas":
+                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status"]
+            else:
+                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"]
+                
             for col in expected_cols:
                 if col not in df.columns:
                     df[col] = "Não Classificado"
@@ -111,6 +114,7 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
                 df['Mês'] = df['Mês'].ffill().fillna("Não Informado").astype(str).str.strip()
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
+            df["Status"] = df["Status"].astype(str).str.strip().str.upper()
             
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
@@ -121,17 +125,17 @@ def ler_planilha_inteligente(file, tipo="esporadica"):
                 
             return df
         except Exception as e:
-            st.error(f"⚠️ Erro ao ler a aba de {tipo}. Verifique a planilha.")
+            st.error(f"⚠️ Erro ao ler a aba de {tipo}. Verifique se o nome da aba e os cabeçalhos estão corretos.")
             return None 
     else:
         # Dados de Demonstração
-        if tipo == "esporadica":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640"], "EQUIPAMENTO": ["Redutor 1", "Correia C206"], "ÁREA": ["SINTERIZAÇÃO", "PÁTIO DE CARVÃO"], "Análise realizada?": ["Sim", "Sim"], "Mês": ["Jan 2026", "Jan 2026"]})
+        if tipo == "esporádicas":
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["SINTERIZAÇÃO", "PÁTIO", "MOAGEM"], "Status": ["ABER", "ENCE", "ENCE"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["Jan 2026", "Jan 2026", "Fev 2026"]})
         else:
-            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902"], "EQUIPAMENTO": ["Turbina TRT", "Exaustor EG11"], "ÁREA": ["ENERGIA", "REDUÇÃO"], "Status M4": ["Pendente", "Concluído"], "Mês": ["Jan 2026", "Fev 2026"]})
+            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["ENERGIA", "REDUÇÃO", "REDUÇÃO"], "Status": ["LIB", "ENCE", "TECO"], "Mês": ["Jan 2026", "Fev 2026", "Fev 2026"]})
 
 # -------------------------------------------------------------------------
-# BARRA LATERAL (BOTÕES E UM ÚNICO UPLOADER)
+# BARRA LATERAL 
 # -------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### <span style='color: #1b5e20; font-size: 26px; font-weight: bold;'>🟢 USIMINAS</span>", unsafe_allow_html=True)
@@ -141,8 +145,8 @@ with st.sidebar:
     st.markdown("### 🔀 Seleção de Painel")
     col_b_esp, col_b_m4 = st.columns(2)
     with col_b_esp:
-        if st.button("Esporádicas", type="primary" if st.session_state.pagina_ativa == 'Esporadicas' else "secondary"):
-            st.session_state.pagina_ativa = 'Esporadicas'
+        if st.button("Esporádicas", type="primary" if st.session_state.pagina_ativa == 'Esporádicas' else "secondary"):
+            st.session_state.pagina_ativa = 'Esporádicas'
             st.rerun()
     with col_b_m4:
         if st.button("Notas M4", type="primary" if st.session_state.pagina_ativa == 'M4' else "secondary"):
@@ -152,32 +156,32 @@ with st.sidebar:
     st.markdown("---")
     st.header("📂 Carregar Arquivo Único")
     
-    # UM SÓ CAMPO DE UPLOAD PARA TUDO!
-    uploaded_file = st.file_uploader("Carregar Planilha (C/ abas Esporádicas e M4)", type=["xlsx", "xls", "csv"])
+    uploaded_file = st.file_uploader("Planilha (Abas: Esporádicas e M4)", type=["xlsx", "xls", "csv"])
     
-# Carrega os dados das duas abas ao mesmo tempo na memória!
-df_esporadica = ler_planilha_inteligente(uploaded_file, tipo="esporadica")
+df_esporadicas = ler_planilha_inteligente(uploaded_file, tipo="esporádicas")
 df_m4 = ler_planilha_inteligente(uploaded_file, tipo="m4")
 
 # -------------------------------------------------------------------------
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
 # -------------------------------------------------------------------------
-if st.session_state.pagina_ativa == 'Esporadicas':
-    df = df_esporadica if df_esporadica is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"])
+if st.session_state.pagina_ativa == 'Esporádicas':
+    df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Análise realizada?", "Mês"])
 
     with st.sidebar:
         if not df.empty:
             st.markdown("---")
             st.subheader("Filtros Esporádicas")
             area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df["ÁREA"].dropna().unique())))
-            analise_opt = st.selectbox("Filtro por Análise realizada?:", ["Todos"] + sorted(list(df["Análise realizada?"].dropna().unique())))
+            status_opt = st.selectbox("Filtro por Status:", ["Todos"] + sorted(list(df["Status"].dropna().unique())))
+            analise_opt = st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df["Análise realizada?"].dropna().unique())))
             mes_opt = st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df["Mês"].dropna().unique())))
             search_query = st.text_input("🔍 Pesquisa Geral:", "")
         else:
-            area_opt, analise_opt, mes_opt, search_query = "Todos", "Todos", "Todos", ""
+            area_opt, status_opt, analise_opt, mes_opt, search_query = "Todos", "Todos", "Todos", "Todos", ""
 
     df_filtered = df.copy()
     if area_opt != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == area_opt]
+    if status_opt != "Todos": df_filtered = df_filtered[df_filtered["Status"] == status_opt]
     if analise_opt != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == analise_opt]
     if mes_opt != "Todos": df_filtered = df_filtered[df_filtered["Mês"] == mes_opt]
     if search_query:
@@ -186,26 +190,34 @@ if st.session_state.pagina_ativa == 'Esporadicas':
 
     col_title, col_btn = st.columns([6, 1])
     with col_title:
-        st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas Esporádicas Redução/Energia</span>", unsafe_allow_html=True)
+        st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas Esporádicas</span>", unsafe_allow_html=True)
     with col_btn:
         st.button("🔗 Compartilhar")
 
-    now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Esporádicas &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
-    
+    st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Esporádicas &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
     st.markdown("---")
     
-    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+    # 5 Colunas de KPIs
+    col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
+    
+    # Lógica de Abertas e Encerradas (Procura por ENCE, TECO ou CONC para Encerradas. O resto é Aberto)
+    encerradas = len(df_filtered[df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)])
+    abertas = total_notas - encerradas
+    
     total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].astype(str).str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
-    with col_kpi1:
-        st.markdown(f"""<div class="metric-card" style="text-align: center;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Total de Notas</p><h2 style="color: #1b5e20; margin: 0; font-size: 38px;">{total_notas}</h2></div>""", unsafe_allow_html=True)
-    with col_kpi2:
-        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #0288d1;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Análises Realizadas</p><h2 style="color: #0288d1; margin: 0; font-size: 38px;">{total_analisadas}</h2></div>""", unsafe_allow_html=True)
-    with col_kpi3:
-        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #f57c00;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Equipamentos Únicos</p><h2 style="color: #f57c00; margin: 0; font-size: 38px;">{total_equipamentos}</h2></div>""", unsafe_allow_html=True)
+    with col_k1:
+        st.markdown(f"""<div class="metric-card" style="text-align: center;"><p style="color: #666; font-size: 13px; margin-bottom: 5px;">Total de Notas</p><h2 style="color: #1b5e20; margin: 0; font-size: 32px;">{total_notas}</h2></div>""", unsafe_allow_html=True)
+    with col_k2:
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #d32f2f;"><p style="color: #666; font-size: 13px; margin-bottom: 5px;">Notas Abertas</p><h2 style="color: #d32f2f; margin: 0; font-size: 32px;">{abertas}</h2></div>""", unsafe_allow_html=True)
+    with col_k3:
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #0288d1;"><p style="color: #666; font-size: 13px; margin-bottom: 5px;">Notas Encerradas</p><h2 style="color: #0288d1; margin: 0; font-size: 32px;">{encerradas}</h2></div>""", unsafe_allow_html=True)
+    with col_k4:
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #00796B;"><p style="color: #666; font-size: 13px; margin-bottom: 5px;">Análises Realizadas</p><h2 style="color: #00796B; margin: 0; font-size: 32px;">{total_analisadas}</h2></div>""", unsafe_allow_html=True)
+    with col_k5:
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #f57c00;"><p style="color: #666; font-size: 13px; margin-bottom: 5px;">Equip. Únicos</p><h2 style="color: #f57c00; margin: 0; font-size: 32px;">{total_equipamentos}</h2></div>""", unsafe_allow_html=True)
         
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -219,8 +231,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
             fig_donut.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
-        else:
-            st.info("Nenhum dado para o gráfico.")
 
     with col_chart_right:
         st.markdown("##### 📈 Notas por Mês")
@@ -231,8 +241,6 @@ if st.session_state.pagina_ativa == 'Esporadicas':
             fig_bar.update_traces(textposition='auto')
             fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Nenhum dado para o gráfico.")
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
@@ -242,20 +250,22 @@ if st.session_state.pagina_ativa == 'Esporadicas':
 # TELA 2: GESTÃO DE NOTAS M4
 # -------------------------------------------------------------------------
 elif st.session_state.pagina_ativa == 'M4':
-    df = df_m4 if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status M4", "Mês"])
+    df = df_m4 if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
 
     with st.sidebar:
         if not df.empty:
             st.markdown("---")
             st.subheader("Filtros M4")
             area_m4_opt = st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df["ÁREA"].dropna().unique())))
+            status_m4_opt = st.selectbox("Filtro por Status (M4):", ["Todos"] + sorted(list(df["Status"].dropna().unique())))
             mes_m4_opt = st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df["Mês"].dropna().unique())))
             search_m4 = st.text_input("🔍 Pesquisa M4:", "")
         else:
-            area_m4_opt, mes_m4_opt, search_m4 = "Todos", "Todos", ""
+            area_m4_opt, status_m4_opt, mes_m4_opt, search_m4 = "Todos", "Todos", "Todos", ""
 
     df_m4_filtered = df.copy()
     if area_m4_opt != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == area_m4_opt]
+    if status_m4_opt != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == status_m4_opt]
     if mes_m4_opt != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == mes_m4_opt]
     if search_m4:
         mask = df_m4_filtered.astype(str).apply(lambda x: x.str.contains(search_m4, case=False)).any(axis=1)
@@ -267,23 +277,28 @@ elif st.session_state.pagina_ativa == 'M4':
     with col_btn:
         st.button("🔗 Compartilhar")
 
-    now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Notas M4 &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_m4_filtered):,}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Painel:</b> Notas M4 &nbsp;|&nbsp; <b>Atualizado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_m4_filtered):,}</p>", unsafe_allow_html=True)
     st.markdown("---")
     
-    col_k1, col_k2, col_k3 = st.columns(3)
+    # 4 Colunas de KPIs
+    col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+    total_m4 = len(df_m4_filtered)
+    
+    encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)])
+    abertas_m4 = total_m4 - encerradas_m4
+    ativos_m4 = df_m4_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_m4_filtered.columns else 0
+    
     with col_k1:
-        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #0288d1;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Total de Notas M4</p><h2 style="color: #0288d1; margin: 0; font-size: 38px;">{len(df_m4_filtered)}</h2></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #0288d1;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Total de Notas M4</p><h2 style="color: #0288d1; margin: 0; font-size: 36px;">{total_m4}</h2></div>""", unsafe_allow_html=True)
     with col_k2:
-        pendentes = len(df_m4_filtered[df_m4_filtered["Status M4"].astype(str).str.lower().str.contains("pendente", na=False)]) if "Status M4" in df_m4_filtered.columns else 0
-        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #f57c00;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Notas Pendentes</p><h2 style="color: #f57c00; margin: 0; font-size: 38px;">{pendentes}</h2></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #d32f2f;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Notas Abertas</p><h2 style="color: #d32f2f; margin: 0; font-size: 36px;">{abertas_m4}</h2></div>""", unsafe_allow_html=True)
     with col_k3:
-        ativos_m4 = df_m4_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_m4_filtered.columns else 0
-        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #1b5e20;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Ativos M4 Únicos</p><h2 style="color: #1b5e20; margin: 0; font-size: 38px;">{ativos_m4}</h2></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #388e3c;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Notas Encerradas</p><h2 style="color: #388e3c; margin: 0; font-size: 36px;">{encerradas_m4}</h2></div>""", unsafe_allow_html=True)
+    with col_k4:
+        st.markdown(f"""<div class="metric-card" style="text-align: center; border-left-color: #f57c00;"><p style="color: #666; font-size: 14px; margin-bottom: 5px;">Ativos M4 Únicos</p><h2 style="color: #f57c00; margin: 0; font-size: 36px;">{ativos_m4}</h2></div>""", unsafe_allow_html=True)
         
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---------------- GRÁFICOS NO M4 ----------------
     col_chart_m1, col_chart_m2 = st.columns(2)
     with col_chart_m1:
         st.markdown("##### 🚨 M4 - Distribuição por Área (%)")
@@ -294,8 +309,6 @@ elif st.session_state.pagina_ativa == 'M4':
             fig_donut_m4.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
             fig_donut_m4.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut_m4, use_container_width=True)
-        else:
-            st.info("Nenhum dado encontrado para o gráfico.")
 
     with col_chart_m2:
         st.markdown("##### 📈 Notas M4 por Mês")
@@ -306,8 +319,6 @@ elif st.session_state.pagina_ativa == 'M4':
             fig_bar_m4.update_traces(textposition='auto')
             fig_bar_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_bar_m4, use_container_width=True)
-        else:
-            st.info("Nenhum dado encontrado para o gráfico.")
 
     st.markdown("---")
     st.subheader("📋 Registros Detalhados - Notas M4")
