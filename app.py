@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 
 # Configuração da Página em modo Wide
@@ -36,16 +35,14 @@ def load_data(file):
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de dados simulada focada em Redução e Energia para notas esporádicas
+        # Base de dados simulada com as colunas exatas da sua planilha
         data = {
-            "Agrupamento Macro": ["Esporádica", "Esporádica", "Esporádica", "Esporádica", "Esporádica", "Esporádica"],
-            "Área Operacional": ["REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "ENERGIA E UTILIDADES"],
-            "Processo": ["Redução", "Energia", "Redução", "Energia", "Redução", "Energia"],
-            "Sub-Processo": ["Forno 1", "Subestação A", "Redução II", "Caldeira B", "Forno 3", "Subestação Principal"],
-            "Status": ["Aberta", "Encerrada", "Aberta", "Aberta", "Encerrada", "Aberta"],
-            "Equipamento": ["EQP-RED-01", "EQP-ENG-01", "EQP-RED-02", "EQP-ENG-02", "EQP-RED-03", "EQP-ENG-03"],
-            "Data Criacao": pd.to_datetime(["2026-06-01", "2026-06-05", "2026-07-01", "2026-07-02", "2026-05-10", "2026-07-04"]),
-            "Data Encerramento": pd.to_datetime([pd.NaT, "2026-06-10", pd.NaT, pd.NaT, "2026-05-15", pd.NaT])
+            "NOTAS": ["N001", "N002", "N003", "N004", "N005", "N006"],
+            "ORDENS": ["ORD-101", "ORD-102", "ORD-103", "ORD-104", "ORD-105", "ORD-106"],
+            "EQUIPAMENTO": ["Ventilador 1", "Compressor Centac", "Bomba PU152", "Forno 3", "Subestação Principal", "Caldeira B"],
+            "ÁREA": ["REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "REDUÇÃO", "ENERGIA E UTILIDADES", "ENERGIA E UTILIDADES"],
+            "Análise realizada?": ["Sim", "Não", "Sim", "Sim", "Não", "Sim"],
+            "Mês": ["Jan 2026", "Fev 2026", "Mar 2026", "Abr 2026", "Mai 2026", "Jun 2026"]
         }
         return pd.DataFrame(data)
 
@@ -59,29 +56,19 @@ with st.sidebar:
     
     st.header("Filtros da Planta")
     
-    uploaded_file = st.file_uploader("Carregar base de dados (XLSX, CSV)", type=["xlsx", "xls", "csv"])
+    uploaded_file = st.file_uploader("Carregar planilha (Excel ou CSV)", type=["xlsx", "xls", "csv"])
     df = load_data(uploaded_file)
     
     if df is not None:
-        expected_cols = ["Agrupamento Macro", "Área Operacional", "Processo", "Sub-Processo", "Status", "Equipamento"]
+        expected_cols = ["NOTAS", "ORDENS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Não Classificado"
 
-        # Filtros ajustados conforme solicitação
-        macro_options = ["Esporádica"] + [x for x in df["Agrupamento Macro"].dropna().unique() if x != "Esporádica"]
-        macro_opt = st.selectbox("Filtro por AGRUPAMENTO MACRO:", macro_options, index=0)
-        
-        area_opt = st.selectbox("Filtro por ÁREA OPERACIONAL:", ["Todos"] + list(df["Área Operacional"].dropna().unique()))
-        
-        proc_options = ["Todos", "Redução", "Energia"]
-        existing_procs = list(df["Processo"].dropna().unique())
-        for p in existing_procs:
-            if p not in proc_options:
-                proc_options.append(p)
-        proc_opt = st.selectbox("Filtro por PROCESSO (Redução / Energia):", proc_options)
-        
-        subproc_opt = st.selectbox("Filtro por SUB - PROCESSO:", ["Todos"] + list(df["Sub-Processo"].dropna().unique()))
+        # Filtros ajustados para as colunas reais da planilha
+        area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + list(df["ÁREA"].dropna().unique()))
+        analise_opt = st.selectbox("Filtro por Análise realizada?:", ["Todos"] + list(df["Análise realizada?"].dropna().unique()))
+        mes_opt = st.selectbox("Filtro por Mês:", ["Todos"] + list(df["Mês"].dropna().unique()))
         
         search_query = st.text_input("🔍 Pesquisa Geral (Qualquer campo):", "")
         
@@ -97,14 +84,12 @@ with st.sidebar:
 # -------------------------------------------------------------------------
 df_filtered = df.copy()
 
-if macro_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Agrupamento Macro"] == macro_opt]
 if area_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Área Operacional"] == area_opt]
-if proc_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Processo"].str.contains(proc_opt, case=False, na=False)]
-if subproc_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Sub-Processo"] == subproc_opt]
+    df_filtered = df_filtered[df_filtered["ÁREA"] == area_opt]
+if analise_opt != "Todos":
+    df_filtered = df_filtered[df_filtered["Análise realizada?"] == analise_opt]
+if mes_opt != "Todos":
+    df_filtered = df_filtered[df_filtered["Mês"] == mes_opt]
 
 if search_query:
     mask = df_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
@@ -119,103 +104,97 @@ with col_title:
 with col_btn:
     st.button("🔗 Compartilhar Dashboard")
 
-base_name = uploaded_file.name if uploaded_file else "Base Simulada CMM (Usiminas)"
+base_name = uploaded_file.name if uploaded_file else "Planilha Redução/Energia"
 now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Base:</b> \\\\uipawa03v\\sg$\\Files\\PRD\\PB\\PB\\Gateway\\Gestão da Manutenção\\CMM - Gestão\\Equipamentos Usina.xlsx &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Base:</b> {base_name} &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
 
 # Abas superiores
 tab1, tab2 = st.tabs(["INVENTÁRIO E MONITORAMENTO", "NOTAS"])
 
 with tab2:
-    st.markdown("### 📌 Notas")
+    st.markdown("### 📌 NOTAS")
     
     # -------------------------------------------------------------------------
     # KPIS DE DESTAQUE
     # -------------------------------------------------------------------------
-    col_kpi1, col_kpi2 = st.columns(2)
+    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
-    total_abertas = len(df_filtered[df_filtered["Status"].str.lower().str.contains("aberta", na=False)])
-    equip_abertas = df_filtered[df_filtered["Status"].str.lower().str.contains("aberta", na=False)]["Equipamento"].nunique()
+    total_notas = len(df_filtered)
+    total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].str.lower().str.contains("sim", na=False)])
+    total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
     with col_kpi1:
         st.markdown(f"""
             <div class="metric-card" style="text-align: center;">
-                <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Total de Notas Abertas</p>
-                <h2 style="color: #1b5e20; margin: 0; font-size: 38px;">{total_abertas}</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Total de Notas</p>
+                <h2 style="color: #1b5e20; margin: 0; font-size: 38px;">{total_notas}</h2>
             </div>
         """, unsafe_allow_html=True)
         
     with col_kpi2:
         st.markdown(f"""
             <div class="metric-card" style="text-align: center; border-left-color: #0288d1;">
-                <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Equip. c/ Notas Abertas</p>
-                <h2 style="color: #0288d1; margin: 0; font-size: 38px;">{equip_abertas}</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Análises Realizadas</p>
+                <h2 style="color: #0288d1; margin: 0; font-size: 38px;">{total_analisadas}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col_kpi3:
+        st.markdown(f"""
+            <div class="metric-card" style="text-align: center; border-left-color: #f57c00;">
+                <p style="color: #666; font-size: 14px; margin-bottom: 5px;">Equipamentos Únicos</p>
+                <h2 style="color: #f57c00; margin: 0; font-size: 38px;">{total_equipamentos}</h2>
             </div>
         """, unsafe_allow_html=True)
         
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    col_ctrl1, col_ctrl2 = st.columns([3, 1])
-    with col_ctrl1:
-        visao = st.radio("Visão das Notas:", ["Notas Abertas", "Notas Criadas", "Notas Encerradas"], horizontal=True)
-    with col_ctrl2:
-        ano_filtro = st.selectbox("Ano:", ["Todos", "2025", "2026"])
-
-    st.markdown("---")
 
     # -------------------------------------------------------------------------
-    # SEÇÃO DE GRÁFICOS (ROSCA E EVOLUÇÃO HISTÓRICA)
+    # SEÇÃO DE GRÁFICOS (PIZZA E COLUNAS)
     # -------------------------------------------------------------------------
     col_chart_left, col_chart_right = st.columns(2)
 
     with col_chart_left:
-        st.markdown("##### 🚨 Notas Abertas por Área (%)")
+        st.markdown("##### 🚨 Distribuição por Área (%)")
         if not df_filtered.empty:
-            df_abertas = df_filtered[df_filtered["Status"].str.lower().str.contains("aberta", na=False)]
-            if not df_abertas.empty:
-                area_counts = df_abertas["Área Operacional"].value_counts().reset_index()
-                area_counts.columns = ["Área", "Quantidade"]
-                
-                fig_donut = px.pie(
-                    area_counts, 
-                    names="Área", 
-                    values="Quantidade", 
-                    hole=0.5,
-                    color_discrete_sequence=px.colors.qualitative.Pastel
-                )
-                fig_donut.update_traces(textinfo="percent+label", textfont_size=12)
-                fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
-                st.plotly_chart(fig_donut, use_container_width=True)
-            else:
-                st.info("Nenhuma nota aberta encontrada para os filtros selecionados.")
+            area_counts = df_filtered["ÁREA"].value_counts().reset_index()
+            area_counts.columns = ["Área", "Quantidade"]
+            
+            fig_donut = px.pie(
+                area_counts, 
+                names="Área", 
+                values="Quantidade", 
+                hole=0.5,
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig_donut.update_traces(textinfo="percent+label", textfont_size=12)
+            fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
+            st.plotly_chart(fig_donut, use_container_width=True)
         else:
             st.info("Sem dados disponíveis.")
 
     with col_chart_right:
-        st.markdown("##### 📈 Evolução Histórica")
-        meses = ["Sep 2025", "Nov 2025", "Jan 2026", "Mar 2026", "May 2026", "Jul 2026"]
-        criadas = [12, 15, 10, 18, 22, 14]
-        encerradas = [12, 14, 10, 18, 20, 12]
-        abertas_hist = [0, 1, 0, 0, 2, 4]
-
-        fig_hist = go.Figure()
-        fig_hist.add_trace(go.Bar(name='Notas criadas', x=meses, y=criadas, marker_color='#81c784'))
-        fig_hist.add_trace(go.Bar(name='Notas encerradas', x=meses, y=encerradas, marker_color='#388e3c'))
-        fig_hist.add_trace(go.Scatter(name='Notas abertas', x=meses, y=abertas_hist, mode='lines+markers', line=dict(color='#d32f2f', width=3)))
-
-        fig_hist.update_layout(
-            barmode='group',
-            margin=dict(t=10, b=10, l=10, r=10),
-            height=350,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
+        st.markdown("##### 📈 Notas por Mês")
+        if not df_filtered.empty and "Mês" in df_filtered.columns:
+            mes_counts = df_filtered["Mês"].value_counts().reset_index()
+            mes_counts.columns = ["Mês", "Quantidade"]
+            
+            fig_bar = px.bar(
+                mes_counts,
+                x="Mês",
+                y="Quantidade",
+                color="Mês",
+                color_discrete_sequence=px.colors.qualitative.Safe
+            )
+            fig_bar.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("Sem dados disponíveis.")
 
     st.markdown("---")
-    st.subheader("📋 Tabela Detalhada de Registros")
+    st.subheader("📋 Tabela Detalhada")
     st.dataframe(df_filtered, use_container_width=True)
 
 with tab1:
-    st.markdown("### 🔍 Inventário e Monitoramento de Equipamentos")
-    st.info("Painel de inventário em tempo real conectado aos ativos da usina.")
+    st.markdown("### 🔍 Inventário e Monitoramento Geral")
     st.dataframe(df, use_container_width=True)
