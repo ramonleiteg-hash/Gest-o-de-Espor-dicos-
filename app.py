@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import unicodedata
-import io  # Biblioteca adicionada para gerenciar a memória do arquivo corretamente
+import io
 
 # Configuração da Página
 st.set_page_config(
@@ -47,7 +47,7 @@ def limpar_filtros():
         st.session_state[k] = "" if 'pesquisa' in k else "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (CORRIGIDO COM io.BytesIO)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRAVA DE DESDUPLICAÇÃO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -55,13 +55,12 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
         try:
             is_csv = file_name.endswith('.csv')
             
-            # Transforma os bytes em um "arquivo fresco" na memória para evitar conflito de cursor no final do arquivo
+            # Transforma os bytes em um "arquivo fresco" na memória
             file_io = io.BytesIO(file_bytes)
             
             # Descobre qual aba (sheet) deve ser lida de forma segura
             if not is_csv:
                 xls = pd.ExcelFile(file_io)
-                # Define uma aba padrão de segurança caso os nomes não batam
                 sheet_target = xls.sheet_names[0] if tipo == "esporádicas" else (xls.sheet_names[-1] if len(xls.sheet_names) > 1 else xls.sheet_names[0])
                 
                 for s in xls.sheet_names:
@@ -73,7 +72,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                         sheet_target = s
                         break
             
-            # Reinicia a leitura do arquivo fresco
             file_io.seek(0)
             
             if is_csv:
@@ -97,6 +95,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             df.columns = df.columns.astype(str).str.strip()
             
+            # Mapeamento com proteção contra sobreposição de nomes
             rename_dict = {}
             for col in df.columns:
                 norm_col = normalize_text(col)
@@ -107,13 +106,17 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 elif any(x in norm_col for x in ['ARE', 'LOCAL', 'SETOR']):
                     if 'ÁREA' not in rename_dict.values(): rename_dict[col] = 'ÁREA'
                 elif 'ANALIS' in norm_col:
-                    rename_dict[col] = 'Análise realizada?'
+                    if 'Análise realizada?' not in rename_dict.values(): rename_dict[col] = 'Análise realizada?'
                 elif any(x in norm_col for x in ['STATUS', 'SITUA', 'ESTADO']):
-                    rename_dict[col] = 'Status'
+                    if 'Status' not in rename_dict.values(): rename_dict[col] = 'Status'
                 elif any(x in norm_col for x in ['MES', 'DATA', 'CRIACAO']):
                     if 'Mês' not in rename_dict.values(): rename_dict[col] = 'Mês'
             
             df = df.rename(columns=rename_dict)
+            
+            # ---> A TRAVA DE SEGURANÇA QUE RESOLVE O ERRO <---
+            # Remove qualquer coluna que tenha ficado com nome duplicado
+            df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status"]
@@ -142,7 +145,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             st.error(f"⚠️ Erro ao processar a aba '{tipo}': {str(e)}")
             return None 
     else:
-        # Dados padrão de demonstração
+        # Dados padrão
         if tipo == "esporádicas":
             return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["SINTERIZAÇÃO", "PÁTIO", "MOAGEM"], "Status": ["ABER", "ENCE", "ENCE"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["Jan 2026", "Jan 2026", "Fev 2026"]})
         else:
@@ -157,7 +160,7 @@ with col_t1:
 with col_t2:
     st.button("🔗 Compartilhar")
 
-# Rádio de seleção (Substituiu os botões de navegação da barra lateral)
+# Rádio de seleção
 painel_selecionado = st.radio("Selecione o Painel para Visualização:", ["Esporádicas", "Notas M4"], horizontal=True)
 st.markdown("---")
 
@@ -172,7 +175,6 @@ with st.sidebar:
     st.header("📂 Carregar Arquivo Único")
     uploaded_file = st.file_uploader("Planilha (Abas: Esporádicas e M4)", type=["xlsx", "xls", "csv"])
     
-    # Extrai os bytes uma única vez e envia para as duas funções
     if uploaded_file is not None:
         raw_bytes = uploaded_file.getvalue()
         file_name = uploaded_file.name
@@ -186,7 +188,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader(f"Filtros - {painel_selecionado}")
     
-    # Renderiza os filtros condicionados ao painel selecionado
     if painel_selecionado == "Esporádicas":
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
@@ -201,7 +202,6 @@ with st.sidebar:
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
-    # BOTÃO LIMPAR FILTROS
     st.button("🧹 Limpar Filtros", on_click=limpar_filtros, type="primary", use_container_width=True)
 
 
@@ -211,7 +211,6 @@ with st.sidebar:
 if painel_selecionado == "Esporádicas":
     df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Análise realizada?", "Mês"])
 
-    # Aplicação dos filtros conectada à memória (session_state)
     df_filtered = df.copy()
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
@@ -274,7 +273,6 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
     
-    # Aplicação dos filtros conectada à memória (session_state)
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
