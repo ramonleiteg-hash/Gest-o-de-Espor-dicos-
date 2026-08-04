@@ -32,11 +32,11 @@ def normalize_text(text):
     return "".join([c for c in nfkd if not unicodedata.combining(c)]).upper().strip()
 
 # -------------------------------------------------------------------------
-# ESTADOS E CONTROLE DE FILTROS
+# ESTADOS E CONTROLE DE FILTROS (Sem Mês e sem Análise)
 # -------------------------------------------------------------------------
 filtros_keys = [
-    'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
-    'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
+    'esp_area', 'esp_status', 'esp_pesquisa', 
+    'm4_area', 'm4_status', 'm4_pesquisa'
 ]
 
 # Inicializa as variáveis na memória para os filtros funcionarem
@@ -135,11 +135,10 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
                 def classificar_status(val):
                     val_str = str(val).upper()
-                    # Regra exata: se tiver MSEN, MREL ou ORDA (além de TECO/CONC), é Encerrada
+                    # Regra: se tiver MSEN, MREL ou ORDA (além de TECO/CONC), é Encerrada
                     if any(x in val_str for x in ['MSEN', 'MREL', 'ORDA', 'ORDAN', 'ENCE', 'TECO', 'CONC']):
                         return "Encerrada"
-                    # Se for MSPN ou outra sigla, é Aberta
-                    return "Aberta"
+                    return "Aberta" # Caso contrário (como MSPN), é Aberta
                 df["Status"] = df["Status SAP"].apply(classificar_status)
             # ----------------------------------------------------
 
@@ -156,6 +155,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 df['Mês'] = df['Mês'].ffill().fillna("Não Informado").astype(str).str.strip()
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
+            df["Status"] = df["Status"].astype(str).str.strip().str.capitalize()
             
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
@@ -215,18 +215,13 @@ with st.sidebar:
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
         
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        # Filtro Detalhado direto com Aberta / Encerrada
-        st.selectbox("Filtro por Status do Sistema:", ["Todos", "Aberta", "Encerrada"], key="esp_status")
-        st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
-        st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df_ref["Mês"].dropna().unique())), key="esp_mes")
+        st.selectbox("Filtro por Status:", ["Todos", "Aberta", "Encerrada"], key="esp_status")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
         df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
         
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
-        # Filtro Detalhado direto com Aberta / Encerrada
-        st.selectbox("Filtro por Status do Sistema (M4):", ["Todos", "Aberta", "Encerrada"], key="m4_status")
-        st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
+        st.selectbox("Filtro por Status (M4):", ["Todos", "Aberta", "Encerrada"], key="m4_status")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
     st.button("🧹 Limpar Filtros", on_click=limpar_filtros, type="primary", use_container_width=True)
@@ -239,11 +234,9 @@ if painel_selecionado == "Esporádicas":
 
     df_filtered = df.copy()
 
-    # Aplicação dos Filtros atualizados
+    # Aplicação dos Filtros Ativos
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
-    if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
-    if st.session_state.esp_mes != "Todos": df_filtered = df_filtered[df_filtered["Mês"] == st.session_state.esp_mes]
     if st.session_state.esp_pesquisa:
         mask = df_filtered.astype(str).apply(lambda x: x.str.contains(st.session_state.esp_pesquisa, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
@@ -357,10 +350,9 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
     
-    # Aplicação dos Filtros atualizados
+    # Aplicação dos Filtros Ativos
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
-    if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
     if st.session_state.m4_pesquisa:
         mask = df_m4_filtered.astype(str).apply(lambda x: x.str.contains(st.session_state.m4_pesquisa, case=False)).any(axis=1)
         df_m4_filtered = df_m4_filtered[mask]
