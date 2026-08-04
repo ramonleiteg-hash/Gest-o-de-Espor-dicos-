@@ -53,7 +53,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP CORRIGIDO)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -127,18 +127,16 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             df = df.rename(columns=rename_dict)
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
-            # --- TRADUTOR DE STATUS SAP (Regra Ajustada para MSEN / MREL) ---
+            # --- TRADUTOR DE STATUS SAP (Regra Exata) ---
             if "Status" in df.columns:
                 df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
                 def classificar_status(val):
                     val_str = str(val).upper()
-                    # Condição de Encerrada: precisa conter MSEN ou MREL (ou códigos finais de encerramento)
                     if any(x in val_str for x in ['MSEN', 'MREL', 'ENCE', 'TECO', 'CONC']):
                         return "Encerrada"
-                    # Caso contrário (como MSPN ou ORDA isolado sem MSEN), é Aberta
                     return "Aberta"
                 df["Status"] = df["Status SAP"].apply(classificar_status)
-            # ----------------------------------------------------------------
+            # ---------------------------------------------
 
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status", "Status SAP"]
@@ -291,7 +289,8 @@ if painel_selecionado == "Esporádicas":
         fig_gauge.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-    st.markdown("##### 📉 Evolução Histórica (Burn-down)")
+    # Gráfico de Evolução Histórica (Apenas Colunas - Total vs Encerradas)
+    st.markdown("##### 📊 Evolução Histórica (Gráfico de Colunas)")
     if not df_filtered.empty and "Mês" in df_filtered.columns:
         df_chart = df_filtered.copy()
         df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
@@ -305,11 +304,24 @@ if painel_selecionado == "Esporádicas":
         grouped = grouped.sort_values("Mês_Formatado")
         
         fig_evo = go.Figure()
-        fig_evo.add_trace(go.Bar(x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')))
-        fig_evo.add_trace(go.Bar(x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')))
-        fig_evo.add_trace(go.Scatter(x=grouped['Mês_Formatado'], y=grouped['Aberta'], name='Abertas (Pendentes)', mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), text=grouped['Aberta'], textposition='top center', textfont=dict(weight='bold')))
         
-        fig_evo.update_layout(barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis_title="", yaxis_title="Quantidade")
+        # Coluna Total de Notas (Verde Claro)
+        fig_evo.add_trace(go.Bar(
+            x=grouped['Mês_Formatado'], y=grouped['Total'], name='Total de Notas', 
+            marker_color='#8bc34a', text=grouped['Total'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        # Coluna Encerradas (Verde Escuro)
+        fig_evo.add_trace(go.Bar(
+            x=grouped['Mês_Formatado'], y=grouped['Encerrada'], name='Encerradas', 
+            marker_color='#2e7d32', text=grouped['Encerrada'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo.update_layout(
+            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            xaxis_title="", yaxis_title="Quantidade"
+        )
         fig_evo.update_yaxes(range=[0, grouped['Total'].max() * 1.15])
         st.plotly_chart(fig_evo, use_container_width=True)
 
@@ -383,7 +395,7 @@ else:
         fig_gauge_m4.update_layout(margin=dict(t=30, b=10, l=20, r=20), height=300)
         st.plotly_chart(fig_gauge_m4, use_container_width=True)
 
-    st.markdown("##### 📉 Evolução Histórica M4 (Burn-down)")
+    st.markdown("##### 📊 Evolução Histórica M4 (Gráfico de Colunas)")
     if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
         df_chart_m4 = df_m4_filtered.copy()
         df_chart_m4["Mês_Formatado"] = pd.to_datetime(df_chart_m4["Mês"], errors='coerce').dt.strftime('%Y-%m')
@@ -397,11 +409,24 @@ else:
         grouped_m4 = grouped_m4.sort_values("Mês_Formatado")
         
         fig_evo_m4 = go.Figure()
-        fig_evo_m4.add_trace(go.Bar(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')))
-        fig_evo_m4.add_trace(go.Bar(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')))
-        fig_evo_m4.add_trace(go.Scatter(x=grouped_m4['Mês_Formatado'], y=grouped_m4['Aberta'], name='Abertas (Pendentes)', mode='lines+markers+text', marker=dict(color='#f44336', size=8), line=dict(color='#f44336', width=3), text=grouped_m4['Aberta'], textposition='top center', textfont=dict(weight='bold')))
         
-        fig_evo_m4.update_layout(barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis_title="", yaxis_title="Quantidade")
+        # Coluna Total de Notas (Verde Claro)
+        fig_evo_m4.add_trace(go.Bar(
+            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Total'], name='Total de Notas', 
+            marker_color='#8bc34a', text=grouped_m4['Total'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        # Coluna Encerradas (Azul)
+        fig_evo_m4.add_trace(go.Bar(
+            x=grouped_m4['Mês_Formatado'], y=grouped_m4['Encerrada'], name='Encerradas', 
+            marker_color='#0288d1', text=grouped_m4['Encerrada'], textposition='outside', textfont=dict(weight='bold')
+        ))
+        
+        fig_evo_m4.update_layout(
+            barmode='group', margin=dict(t=20, b=10, l=10, r=10), height=350, 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            xaxis_title="", yaxis_title="Quantidade"
+        )
         fig_evo_m4.update_yaxes(range=[0, grouped_m4['Total'].max() * 1.15])
         st.plotly_chart(fig_evo_m4, use_container_width=True)
 
