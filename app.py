@@ -59,7 +59,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO AVANÇADO)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRAVA DE DESDUPLICAÇÃO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -107,9 +107,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             df.columns = df.columns.astype(str).str.strip()
             
-            # -----------------------------------------------------------------
-            # NOVO SISTEMA DE MAPEAMENTO DE COLUNAS (PRIORIZADO E ABRANGENTE)
-            # -----------------------------------------------------------------
+            # Mapeamento com proteção contra sobreposição de nomes
             def find_col(df_cols, keywords):
                 for kw in keywords:
                     for c in df_cols:
@@ -119,35 +117,26 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             rename_dict = {}
             
-            # 1. Busca por NOTAS
             col_notas = find_col(df.columns, ['NOTA', 'ORDEM', 'AVISO'])
             if col_notas: rename_dict[col_notas] = 'NOTAS'
             
-            # 2. Busca por EQUIPAMENTO
             col_equip = find_col(df.columns, ['EQUIP', 'DENOMINA', 'TAG'])
             if col_equip: rename_dict[col_equip] = 'EQUIPAMENTO'
             
-            # 3. Busca por ÁREA (Vocabulário expandido para SAP PM)
             col_area = find_col(df.columns, ['ARE', 'GERENCIA', 'SETOR', 'OFICINA', 'PLANTA', 'UNIDADE', 'SISTEMA', 'CENTRO', 'LOCAL', 'DIVISAO', 'DEPARTAMENTO'])
             if col_area: rename_dict[col_area] = 'ÁREA'
             
-            # 4. Busca por STATUS
             col_status = find_col(df.columns, ['STATUS', 'SITUA', 'ESTADO'])
             if col_status: rename_dict[col_status] = 'Status'
             
-            # 5. Busca por MÊS/DATA
             col_mes = find_col(df.columns, ['MES', 'DATA', 'CRIACAO'])
             if col_mes: rename_dict[col_mes] = 'Mês'
             
-            # 6. Busca por ANÁLISE REALIZADA
             col_analise = find_col(df.columns, ['ANALIS'])
             if col_analise: rename_dict[col_analise] = 'Análise realizada?'
             
-            # Aplica as renomeações e remove colunas duplicadas
             df = df.rename(columns=rename_dict)
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
-            
-            # -----------------------------------------------------------------
             
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status"]
@@ -301,9 +290,10 @@ if painel_selecionado == "Esporádicas":
         if not df_filtered.empty and "Mês" in df_filtered.columns:
             mes_counts = df_filtered.groupby("Mês", as_index=False).size()
             mes_counts.columns = ["Mês", "Quantidade"]
-            fig_bar = px.bar(mes_counts, x="Mês", y="Quantidade", text="Quantidade", color="Mês", color_discrete_sequence=px.colors.qualitative.Safe)
-            fig_bar.update_traces(textposition='auto')
-            fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
+            # Gráfico modificado para cor única e eixo X categórico
+            fig_bar = px.bar(mes_counts, x="Mês", y="Quantidade", text="Quantidade")
+            fig_bar.update_traces(textposition='auto', marker_color='#1b5e20')
+            fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_type='category', bargap=0.15)
             st.plotly_chart(fig_bar, use_container_width=True)
 
     st.markdown("---")
@@ -365,9 +355,10 @@ else:
         if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
             mes_m4_counts = df_m4_filtered.groupby("Mês", as_index=False).size()
             mes_m4_counts.columns = ["Mês", "Quantidade"]
-            fig_bar_m4 = px.bar(mes_m4_counts, x="Mês", y="Quantidade", text="Quantidade", color="Mês", color_discrete_sequence=px.colors.qualitative.Safe)
-            fig_bar_m4.update_traces(textposition='auto')
-            fig_bar_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350)
+            # Gráfico modificado para cor única e eixo X categórico
+            fig_bar_m4 = px.bar(mes_m4_counts, x="Mês", y="Quantidade", text="Quantidade")
+            fig_bar_m4.update_traces(textposition='auto', marker_color='#0288d1')
+            fig_bar_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_type='category', bargap=0.15)
             st.plotly_chart(fig_bar_m4, use_container_width=True)
 
     st.markdown("---")
