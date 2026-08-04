@@ -59,7 +59,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO CORRIGIDO: LOCAL INSTALAÇÃO SAP)
+# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO CORRIGIDO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -119,11 +119,9 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             col_equip = find_col(df.columns, ['EQUIP', 'DENOMINA', 'TAG'])
             if col_equip: rename_dict[col_equip] = 'EQUIPAMENTO'
             
-            # CORREÇÃO CRÍTICA AQUI: Prioridade para "Loc.Instalação" ao invés de "Sistema"
             col_area = find_col(df.columns, ['INSTALA', 'LOC', 'ARE', 'GERENCIA', 'SETOR', 'OFICINA', 'PLANTA', 'UNIDADE', 'CENTRO', 'DIVISAO'])
             if col_area: rename_dict[col_area] = 'ÁREA'
             
-            # CORREÇÃO CRÍTICA AQUI: Busca primeiro por "Status Sistema" para não conflitar com outras colunas
             col_status = find_col(df.columns, ['STATUS SISTEMA', 'STATUS DO SISTEMA', 'STATUS', 'SITUA', 'ESTADO'])
             if col_status: rename_dict[col_status] = 'Status'
             
@@ -165,9 +163,9 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
     else:
         # Dados padrão
         if tipo == "esporádicas":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSEN ORDA"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
         else:
-            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "TECO"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
+            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
 
 # -------------------------------------------------------------------------
 # CABEÇALHO PRINCIPAL E RÁDIOS DE NAVEGAÇÃO
@@ -225,6 +223,8 @@ with st.sidebar:
         
     st.button("🧹 Limpar Filtros", on_click=limpar_filtros, type="primary", use_container_width=True)
 
+# Variável contendo a regra de palavras exatas do sistema SAP para encerradas
+REGEX_ENCERRADAS = "MSEN|MREL|ORDAN|ORDA|ENCE|TECO|CONC"
 
 # -------------------------------------------------------------------------
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
@@ -235,9 +235,9 @@ if painel_selecionado == "Esporádicas":
     df_filtered = df.copy()
     
     if st.session_state.esp_situacao == "Encerradas":
-        df_filtered = df_filtered[df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+        df_filtered = df_filtered[df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
     elif st.session_state.esp_situacao == "Abertas":
-        df_filtered = df_filtered[~df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+        df_filtered = df_filtered[~df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
 
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
@@ -251,7 +251,7 @@ if painel_selecionado == "Esporádicas":
     
     col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
-    encerradas = len(df_filtered[df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)])
+    encerradas = len(df_filtered[df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)])
     abertas = total_notas - encerradas
     total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].astype(str).str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
@@ -307,9 +307,9 @@ else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
     
     if st.session_state.m4_situacao == "Encerradas":
-        df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+        df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
     elif st.session_state.m4_situacao == "Abertas":
-        df_m4_filtered = df_m4_filtered[~df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
+        df_m4_filtered = df_m4_filtered[~df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
 
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
@@ -322,7 +322,7 @@ else:
     
     col_k1, col_k2, col_k3, col_k4 = st.columns(4)
     total_m4 = len(df_m4_filtered)
-    encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)])
+    encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)])
     abertas_m4 = total_m4 - encerradas_m4
     ativos_m4 = df_m4_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_m4_filtered.columns else 0
     
