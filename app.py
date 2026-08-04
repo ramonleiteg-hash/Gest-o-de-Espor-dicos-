@@ -37,10 +37,8 @@ def load_data(file):
             if file.name.endswith('.csv'):
                 df = pd.read_csv(file)
             else:
-                # Tenta ler ignorando a primeira linha de título (caso haja banner superior)
                 df = pd.read_excel(file, header=1)
             
-            # Limpar espaços e converter colunas
             df.columns = df.columns.astype(str).str.strip()
             
             rename_dict = {}
@@ -59,20 +57,14 @@ def load_data(file):
             
             df = df.rename(columns=rename_dict)
             
-            # Garantir colunas obrigatórias
             expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
             for col in expected_cols:
                 if col not in df.columns:
                     df[col] = "Não Classificado"
             
-            # Preencher células vazias na coluna Mês (caso venham mescladas na planilha)
             df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
-            
-            # Padronizar valores internos para os gráficos contabilizarem certinho
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
             df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
-            
-            # Remover linhas onde a nota está vazia
             df = df.dropna(subset=["NOTAS"])
             
             return df
@@ -80,7 +72,6 @@ def load_data(file):
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de demonstração padrão caso nenhum arquivo seja enviado
         data = {
             "NOTAS": ["26161958", "26153640", "26173261", "26174250", "26174646", "28802523"],
             "EQUIPAMENTO": ["redutor ac. travasso", "correia transportadora C206", "COMPRESSOR 5", "motor da TC_02", "CT B-202.1", "RECEBIMENTO E ENVIO"],
@@ -205,7 +196,8 @@ with tab2:
                 hole=0.5,
                 color_discrete_sequence=px.colors.qualitative.Prism
             )
-            fig_donut.update_traces(textinfo="percent+label", textfont_size=11)
+            # Força o texto para dentro do gráfico e ajusta o tamanho da fonte
+            fig_donut.update_traces(textposition='inside', textinfo="percent+label", textfont_size=10)
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
         else:
