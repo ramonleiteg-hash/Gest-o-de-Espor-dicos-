@@ -167,7 +167,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
 # -------------------------------------------------------------------------
 col_t1, col_t2 = st.columns([6, 1])
 with col_t1:
-    st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas e Manutenção</span>", unsafe_allow_html=True)
+    st.markdown("## <span style='color: #1b5e20;'>📊 Gestão de Notas de Manutenção</span>", unsafe_allow_html=True)
 with col_t2:
     st.button("🔗 Compartilhar")
 
