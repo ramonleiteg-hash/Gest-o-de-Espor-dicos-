@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Configuração da Página em modo Wide
 st.set_page_config(
-    page_title="CMM - Centro de Monitoramento da Manutenção",
+    page_title="Gestão de Notas Esporádicas Redução/Energia",
     page_icon="🏭",
     layout="wide"
 )
@@ -36,24 +36,21 @@ def load_data(file):
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de dados simulada robusta para manter o layout idêntico ao modelo Usiminas
+        # Base de dados simulada focada em Redução e Energia para notas esporádicas
         data = {
-            "Agrupamento Macro": ["Manutenção Corretiva", "Preventiva", "Esporádica", "Esporádica", "Corretiva", "Preventiva", "Esporádica", "Corretiva"],
-            "Área Operacional": ["LAMINAÇÃO A FRIO", "LAMINAÇÃO A QUENTE", "ENERGIA E UTILIDADES", "REDUÇÃO", "ACIARIA", "LAMINAÇÃO A FRIO", "ENERGIA E UTILIDADES", "REDUÇÃO"],
-            "Processo": ["Linha de Recozimento", "Laminação 01", "Geração Vapor", "Redução I", "Conversor A", "Linha de Zinco", "Subestação Principal", "Linha 02"],
-            "Sub-Processo": ["Mecânica", "Elétrica", "Caldeira", "Forno", "Hidráulica", "Mecânica", "Alta Tensão", "Automação"],
-            "Código ABC": ["A", "B", "A", "C", "B", "A", "C", "B"],
-            "Lista": ["Lista Principal", "Lista Parada", "Lista Extra", "Lista Principal", "Lista Parada", "Lista Extra", "Lista Principal", "Lista Parada"],
-            "Status": ["Aberta", "Encerrada", "Aberta", "Aberta", "Encerrada", "Aberta", "Aberta", "Encerrada"],
-            "Equipamento": ["EQP-101", "EQP-102", "EQP-103", "EQP-104", "EQP-105", "EQP-101", "EQP-106", "EQP-107"],
-            "Data Criacao": pd.to_datetime(["2026-05-10", "2026-04-12", "2026-06-01", "2026-06-15", "2026-03-20", "2026-07-01", "2026-07-05", "2026-02-10"]),
-            "Data Encerramento": pd.to_datetime([pd.NaT, "2026-04-18", pd.NaT, pd.NaT, "2026-03-25", pd.NaT, pd.NaT, "2026-02-15"]),
-            "Ano": [2026, 2026, 2026, 2026, 2026, 2026, 2026, 2026]
+            "Agrupamento Macro": ["Esporádica", "Esporádica", "Esporádica", "Esporádica", "Esporádica", "Esporádica"],
+            "Área Operacional": ["REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "ENERGIA E UTILIDADES"],
+            "Processo": ["Redução", "Energia", "Redução", "Energia", "Redução", "Energia"],
+            "Sub-Processo": ["Forno 1", "Subestação A", "Redução II", "Caldeira B", "Forno 3", "Subestação Principal"],
+            "Status": ["Aberta", "Encerrada", "Aberta", "Aberta", "Encerrada", "Aberta"],
+            "Equipamento": ["EQP-RED-01", "EQP-ENG-01", "EQP-RED-02", "EQP-ENG-02", "EQP-RED-03", "EQP-ENG-03"],
+            "Data Criacao": pd.to_datetime(["2026-06-01", "2026-06-05", "2026-07-01", "2026-07-02", "2026-05-10", "2026-07-04"]),
+            "Data Encerramento": pd.to_datetime([pd.NaT, "2026-06-10", pd.NaT, pd.NaT, "2026-05-15", pd.NaT])
         }
         return pd.DataFrame(data)
 
 # -------------------------------------------------------------------------
-# BARRA LATERAL (FILTROS DA PLANTA & SLOGAN)
+# BARRA LATERAL (FILTROS)
 # -------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 🟢 **USIMINAS**")
@@ -66,30 +63,34 @@ with st.sidebar:
     df = load_data(uploaded_file)
     
     if df is not None:
-        # Garantir colunas essenciais caso o usuário envie arquivo próprio
-        expected_cols = ["Agrupamento Macro", "Área Operacional", "Processo", "Sub-Processo", "Código ABC", "Lista", "Status", "Equipamento"]
+        expected_cols = ["Agrupamento Macro", "Área Operacional", "Processo", "Sub-Processo", "Status", "Equipamento"]
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Não Classificado"
 
-        # Filtros interativos
-        macro_opt = st.selectbox("Filtro por AGRUPAMENTO MACRO:", ["Todos"] + list(df["Agrupamento Macro"].dropna().unique()))
+        # Filtros ajustados conforme solicitação
+        macro_options = ["Esporádica"] + [x for x in df["Agrupamento Macro"].dropna().unique() if x != "Esporádica"]
+        macro_opt = st.selectbox("Filtro por AGRUPAMENTO MACRO:", macro_options, index=0)
+        
         area_opt = st.selectbox("Filtro por ÁREA OPERACIONAL:", ["Todos"] + list(df["Área Operacional"].dropna().unique()))
-        proc_opt = st.selectbox("Filtro por PROCESSO:", ["Todos"] + list(df["Processo"].dropna().unique()))
+        
+        proc_options = ["Todos", "Redução", "Energia"]
+        existing_procs = list(df["Processo"].dropna().unique())
+        for p in existing_procs:
+            if p not in proc_options:
+                proc_options.append(p)
+        proc_opt = st.selectbox("Filtro por PROCESSO (Redução / Energia):", proc_options)
+        
         subproc_opt = st.selectbox("Filtro por SUB - PROCESSO:", ["Todos"] + list(df["Sub-Processo"].dropna().unique()))
-        abc_opt = st.selectbox("Filtro por Código ABC:", ["Todos"] + list(df["Código ABC"].dropna().unique()))
-        lista_opt = st.selectbox("Filtro por LISTA:", ["Todos"] + list(df["Lista"].dropna().unique()))
         
         search_query = st.text_input("🔍 Pesquisa Geral (Qualquer campo):", "")
         
         st.markdown("---")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            aplicar = st.button("Aplicar filtros", type="primary")
+            st.button("Aplicar filtros", type="primary")
         with col_b2:
-            limpar = st.button("Limpar Todos")
-
-        st.markdown("<br><p style='font-size:11px; color:gray;'>Abra a lista e marque uma ou mais opções em cada filtro.</p>", unsafe_allow_html=True)
+            st.button("Limpar Todos")
 
 # -------------------------------------------------------------------------
 # APLICANDO FILTROS NO DATAFRAME
@@ -101,13 +102,9 @@ if macro_opt != "Todos":
 if area_opt != "Todos":
     df_filtered = df_filtered[df_filtered["Área Operacional"] == area_opt]
 if proc_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Processo"] == proc_opt]
+    df_filtered = df_filtered[df_filtered["Processo"].str.contains(proc_opt, case=False, na=False)]
 if subproc_opt != "Todos":
     df_filtered = df_filtered[df_filtered["Sub-Processo"] == subproc_opt]
-if abc_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Código ABC"] == abc_opt]
-if lista_opt != "Todos":
-    df_filtered = df_filtered[df_filtered["Lista"] == lista_opt]
 
 if search_query:
     mask = df_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
@@ -118,19 +115,19 @@ if search_query:
 # -------------------------------------------------------------------------
 col_title, col_btn = st.columns([6, 1])
 with col_title:
-    st.markdown("## 📊 CMM - Centro de Monitoramento da Manutenção")
+    st.markdown("## 📊 Gestão de Notas Esporádicas Redução/Energia")
 with col_btn:
     st.button("🔗 Compartilhar Dashboard")
 
-base_name = uploaded_file.name if uploaded_file else "Base Simulada CMM (Usiminas - Gestão M8)"
+base_name = uploaded_file.name if uploaded_file else "Base Simulada CMM (Usiminas)"
 now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Base:</b> \\\\uipawa03v\\sg$\\Files\\PRD\\PB\\PB\\Gateway\\Gestão da Manutenção\\CMM - Gestão\\Equipamentos Usina.xlsx &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
 
 # Abas superiores
-tab1, tab2 = st.tabs(["INVENTÁRIO E MONITORAMENTO", "GESTÃO DE NOTAS M8"])
+tab1, tab2 = st.tabs(["INVENTÁRIO E MONITORAMENTO", "NOTAS"])
 
 with tab2:
-    st.markdown("### 📌 Gestão de Notas M8")
+    st.markdown("### 📌 Notas")
     
     # -------------------------------------------------------------------------
     # KPIS DE DESTAQUE
@@ -158,10 +155,9 @@ with tab2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Controles de Visão e Ano
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl1:
-        visao = st.radio("Visão das Notas M8:", ["Notas Abertas", "Notas Criadas", "Notas Encerradas"], horizontal=True)
+        visao = st.radio("Visão das Notas:", ["Notas Abertas", "Notas Criadas", "Notas Encerradas"], horizontal=True)
     with col_ctrl2:
         ano_filtro = st.selectbox("Ano:", ["Todos", "2025", "2026"])
 
@@ -197,11 +193,10 @@ with tab2:
 
     with col_chart_right:
         st.markdown("##### 📈 Evolução Histórica")
-        # Criando dados simulados consistentes para o gráfico temporal de colunas e linhas
         meses = ["Sep 2025", "Nov 2025", "Jan 2026", "Mar 2026", "May 2026", "Jul 2026"]
-        criadas = [76, 91, 32, 45, 118, 40]
-        encerradas = [76, 31, 32, 45, 106, 37]
-        abertas_hist = [0, 0, 0, 0, 2, 41]
+        criadas = [12, 15, 10, 18, 22, 14]
+        encerradas = [12, 14, 10, 18, 20, 12]
+        abertas_hist = [0, 1, 0, 0, 2, 4]
 
         fig_hist = go.Figure()
         fig_hist.add_trace(go.Bar(name='Notas criadas', x=meses, y=criadas, marker_color='#81c784'))
@@ -217,7 +212,7 @@ with tab2:
         st.plotly_chart(fig_hist, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("📋 Tabela Detalhada de Registros M8")
+    st.subheader("📋 Tabela Detalhada de Registros")
     st.dataframe(df_filtered, use_container_width=True)
 
 with tab1:
