@@ -36,7 +36,7 @@ if 'pagina_ativa' not in st.session_state:
 # -------------------------------------------------------------------------
 # LEITOR INTELIGENTE AUTOMÁTICO (ABAS SEPARADAS)
 # -------------------------------------------------------------------------
-@st.cache_data(experimental_allow_widgets=True)
+@st.cache_data  # <-- CORREÇÃO FEITA AQUI (Removido o experimental_allow_widgets)
 def ler_planilha_inteligente(file, tipo="esporadica"):
     if file is not None:
         try:
