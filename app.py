@@ -66,11 +66,8 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
     if file_bytes is not None:
         try:
             is_csv = file_name.endswith('.csv')
-            
-            # Transforma os bytes em um "arquivo fresco" na memória
             file_io = io.BytesIO(file_bytes)
             
-            # Descobre qual aba (sheet) deve ser lida de forma segura
             if not is_csv:
                 xls = pd.ExcelFile(file_io)
                 sheet_target = xls.sheet_names[0] if tipo == "esporádicas" else (xls.sheet_names[-1] if len(xls.sheet_names) > 1 else xls.sheet_names[0])
@@ -107,7 +104,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             df.columns = df.columns.astype(str).str.strip()
             
-            # Mapeamento com proteção contra sobreposição de nomes
             def find_col(df_cols, keywords):
                 for kw in keywords:
                     for c in df_cols:
@@ -116,7 +112,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 return None
             
             rename_dict = {}
-            
             col_notas = find_col(df.columns, ['NOTA', 'ORDEM', 'AVISO'])
             if col_notas: rename_dict[col_notas] = 'NOTAS'
             
@@ -180,7 +175,6 @@ with col_t1:
 with col_t2:
     st.button("🔗 Compartilhar")
 
-# Rádio de seleção
 painel_selecionado = st.radio("Selecione o Painel para Visualização:", ["Esporádicas", "Notas M4"], horizontal=True)
 st.markdown("---")
 
@@ -237,13 +231,11 @@ if painel_selecionado == "Esporádicas":
 
     df_filtered = df.copy()
     
-    # Filtro Rápido de Botões (Abertas / Encerradas)
     if st.session_state.esp_situacao == "Encerradas":
         df_filtered = df_filtered[df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
     elif st.session_state.esp_situacao == "Abertas":
         df_filtered = df_filtered[~df_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
 
-    # Filtros Tradicionais
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
@@ -286,15 +278,22 @@ if painel_selecionado == "Esporádicas":
             st.plotly_chart(fig_donut, use_container_width=True)
 
     with col_chart_right:
-        st.markdown("##### 📈 Notas por Mês")
+        st.markdown("##### 📈 Histórico de Notas (Timeline)")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
-            mes_counts = df_filtered.groupby("Mês", as_index=False).size()
+            df_chart = df_filtered.copy()
+            # Formata a data para agrupar tudo no padrão Ano-Mês (Ignorando dias esmagados)
+            df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
+            df_chart["Mês_Formatado"] = df_chart["Mês_Formatado"].fillna(df_chart["Mês"])
+            
+            mes_counts = df_chart.groupby("Mês_Formatado", as_index=False).size()
             mes_counts.columns = ["Mês", "Quantidade"]
-            # Gráfico modificado para cor única e eixo X categórico
-            fig_bar = px.bar(mes_counts, x="Mês", y="Quantidade", text="Quantidade")
-            fig_bar.update_traces(textposition='auto', marker_color='#1b5e20')
-            fig_bar.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_type='category', bargap=0.15)
-            st.plotly_chart(fig_bar, use_container_width=True)
+            mes_counts = mes_counts.sort_values("Mês") # Ordenação cronológica correta
+            
+            # Gráfico de Área contínuo ao invés de barras isoladas
+            fig_area = px.area(mes_counts, x="Mês", y="Quantidade", markers=True)
+            fig_area.update_traces(line_color='#1b5e20', fillcolor='rgba(27, 94, 32, 0.2)')
+            fig_area.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_title="Linha do Tempo", yaxis_title="Volume de Notas")
+            st.plotly_chart(fig_area, use_container_width=True)
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
@@ -306,13 +305,11 @@ if painel_selecionado == "Esporádicas":
 else:
     df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
     
-    # Filtro Rápido de Botões (Abertas / Encerradas)
     if st.session_state.m4_situacao == "Encerradas":
         df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
     elif st.session_state.m4_situacao == "Abertas":
         df_m4_filtered = df_m4_filtered[~df_m4_filtered["Status"].astype(str).str.contains("ENCE|TECO|CONC", case=False, na=False)]
 
-    # Filtros Tradicionais
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
@@ -351,15 +348,22 @@ else:
             st.plotly_chart(fig_donut_m4, use_container_width=True)
 
     with col_chart_m2:
-        st.markdown("##### 📈 Notas M4 por Mês")
+        st.markdown("##### 📈 Histórico de Notas M4 (Timeline)")
         if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
-            mes_m4_counts = df_m4_filtered.groupby("Mês", as_index=False).size()
+            df_chart_m4 = df_m4_filtered.copy()
+            # Formata a data para agrupar tudo no padrão Ano-Mês
+            df_chart_m4["Mês_Formatado"] = pd.to_datetime(df_chart_m4["Mês"], errors='coerce').dt.strftime('%Y-%m')
+            df_chart_m4["Mês_Formatado"] = df_chart_m4["Mês_Formatado"].fillna(df_chart_m4["Mês"])
+            
+            mes_m4_counts = df_chart_m4.groupby("Mês_Formatado", as_index=False).size()
             mes_m4_counts.columns = ["Mês", "Quantidade"]
-            # Gráfico modificado para cor única e eixo X categórico
-            fig_bar_m4 = px.bar(mes_m4_counts, x="Mês", y="Quantidade", text="Quantidade")
-            fig_bar_m4.update_traces(textposition='auto', marker_color='#0288d1')
-            fig_bar_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_type='category', bargap=0.15)
-            st.plotly_chart(fig_bar_m4, use_container_width=True)
+            mes_m4_counts = mes_m4_counts.sort_values("Mês") # Ordenação cronológica correta
+            
+            # Gráfico de Área contínuo ao invés de barras isoladas
+            fig_area_m4 = px.area(mes_m4_counts, x="Mês", y="Quantidade", markers=True)
+            fig_area_m4.update_traces(line_color='#0288d1', fillcolor='rgba(2, 136, 209, 0.2)')
+            fig_area_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_title="Linha do Tempo", yaxis_title="Volume de Notas")
+            st.plotly_chart(fig_area_m4, use_container_width=True)
 
     st.markdown("---")
     st.subheader("📋 Registros Detalhados - Notas M4")
