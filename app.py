@@ -59,7 +59,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRAVA DE DESDUPLICAÇÃO)
+# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO CORRIGIDO: LOCAL INSTALAÇÃO SAP)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -91,7 +91,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             header_row = 0
             for idx, row in df_raw.head(30).iterrows():
                 row_str = " ".join([normalize_text(str(val)) for val in row.values])
-                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA', 'ORDEM', 'AVISO', 'LOCAL', 'GERENCIA', 'SETOR']):
+                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA', 'ORDEM', 'AVISO', 'INSTALA', 'LOC', 'GERENCIA', 'SETOR']):
                     header_row = idx
                     break
             
@@ -112,19 +112,22 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 return None
             
             rename_dict = {}
+            
             col_notas = find_col(df.columns, ['NOTA', 'ORDEM', 'AVISO'])
             if col_notas: rename_dict[col_notas] = 'NOTAS'
             
             col_equip = find_col(df.columns, ['EQUIP', 'DENOMINA', 'TAG'])
             if col_equip: rename_dict[col_equip] = 'EQUIPAMENTO'
             
-            col_area = find_col(df.columns, ['ARE', 'GERENCIA', 'SETOR', 'OFICINA', 'PLANTA', 'UNIDADE', 'SISTEMA', 'CENTRO', 'LOCAL', 'DIVISAO', 'DEPARTAMENTO'])
+            # CORREÇÃO CRÍTICA AQUI: Prioridade para "Loc.Instalação" ao invés de "Sistema"
+            col_area = find_col(df.columns, ['INSTALA', 'LOC', 'ARE', 'GERENCIA', 'SETOR', 'OFICINA', 'PLANTA', 'UNIDADE', 'CENTRO', 'DIVISAO'])
             if col_area: rename_dict[col_area] = 'ÁREA'
             
-            col_status = find_col(df.columns, ['STATUS', 'SITUA', 'ESTADO'])
+            # CORREÇÃO CRÍTICA AQUI: Busca primeiro por "Status Sistema" para não conflitar com outras colunas
+            col_status = find_col(df.columns, ['STATUS SISTEMA', 'STATUS DO SISTEMA', 'STATUS', 'SITUA', 'ESTADO'])
             if col_status: rename_dict[col_status] = 'Status'
             
-            col_mes = find_col(df.columns, ['MES', 'DATA', 'CRIACAO'])
+            col_mes = find_col(df.columns, ['MES', 'DATA NO', 'DATA', 'CRIACAO'])
             if col_mes: rename_dict[col_mes] = 'Mês'
             
             col_analise = find_col(df.columns, ['ANALIS'])
@@ -162,9 +165,9 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
     else:
         # Dados padrão
         if tipo == "esporádicas":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["SINTERIZAÇÃO", "PÁTIO", "MOAGEM"], "Status": ["ABER", "ENCE", "ENCE"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["Jan 2026", "Jan 2026", "Fev 2026"]})
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSEN ORDA"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
         else:
-            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["ENERGIA", "REDUÇÃO", "REDUÇÃO"], "Status": ["LIB", "ENCE", "TECO"], "Mês": ["Jan 2026", "Fev 2026", "Fev 2026"]})
+            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "TECO"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
 
 # -------------------------------------------------------------------------
 # CABEÇALHO PRINCIPAL E RÁDIOS DE NAVEGAÇÃO
@@ -281,15 +284,13 @@ if painel_selecionado == "Esporádicas":
         st.markdown("##### 📈 Histórico de Notas (Timeline)")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
             df_chart = df_filtered.copy()
-            # Formata a data para agrupar tudo no padrão Ano-Mês (Ignorando dias esmagados)
             df_chart["Mês_Formatado"] = pd.to_datetime(df_chart["Mês"], errors='coerce').dt.strftime('%Y-%m')
             df_chart["Mês_Formatado"] = df_chart["Mês_Formatado"].fillna(df_chart["Mês"])
             
             mes_counts = df_chart.groupby("Mês_Formatado", as_index=False).size()
             mes_counts.columns = ["Mês", "Quantidade"]
-            mes_counts = mes_counts.sort_values("Mês") # Ordenação cronológica correta
+            mes_counts = mes_counts.sort_values("Mês")
             
-            # Gráfico de Área contínuo ao invés de barras isoladas
             fig_area = px.area(mes_counts, x="Mês", y="Quantidade", markers=True)
             fig_area.update_traces(line_color='#1b5e20', fillcolor='rgba(27, 94, 32, 0.2)')
             fig_area.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_title="Linha do Tempo", yaxis_title="Volume de Notas")
@@ -351,15 +352,13 @@ else:
         st.markdown("##### 📈 Histórico de Notas M4 (Timeline)")
         if not df_m4_filtered.empty and "Mês" in df_m4_filtered.columns:
             df_chart_m4 = df_m4_filtered.copy()
-            # Formata a data para agrupar tudo no padrão Ano-Mês
             df_chart_m4["Mês_Formatado"] = pd.to_datetime(df_chart_m4["Mês"], errors='coerce').dt.strftime('%Y-%m')
             df_chart_m4["Mês_Formatado"] = df_chart_m4["Mês_Formatado"].fillna(df_chart_m4["Mês"])
             
             mes_m4_counts = df_chart_m4.groupby("Mês_Formatado", as_index=False).size()
             mes_m4_counts.columns = ["Mês", "Quantidade"]
-            mes_m4_counts = mes_m4_counts.sort_values("Mês") # Ordenação cronológica correta
+            mes_m4_counts = mes_m4_counts.sort_values("Mês")
             
-            # Gráfico de Área contínuo ao invés de barras isoladas
             fig_area_m4 = px.area(mes_m4_counts, x="Mês", y="Quantidade", markers=True)
             fig_area_m4.update_traces(line_color='#0288d1', fillcolor='rgba(2, 136, 209, 0.2)')
             fig_area_m4.update_layout(showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=350, xaxis_title="Linha do Tempo", yaxis_title="Volume de Notas")
