@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import unicodedata
 
 # Configuração da Página em modo Wide
 st.set_page_config(
@@ -19,8 +20,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Função para remover acentos e padronizar textos das colunas
+def normalize_text(text):
+    if not isinstance(text, str):
+        text = str(text)
+    nfkd = unicodedata.normalize('NFKD', text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)]).upper().strip()
+
 # -------------------------------------------------------------------------
-# CARREGAMENTO E TRATAMENTO DOS DADOS
+# CARREGAMENTO E LEITOR INTELIGENTE DA PLANILHA
 # -------------------------------------------------------------------------
 @st.cache_data
 def load_data(file):
@@ -29,19 +37,56 @@ def load_data(file):
             if file.name.endswith('.csv'):
                 df = pd.read_csv(file)
             else:
-                df = pd.read_excel(file)
+                # Tenta ler ignorando a primeira linha de título (caso haja banner superior)
+                df = pd.read_excel(file, header=1)
+            
+            # Limpar espaços e converter colunas
+            df.columns = df.columns.astype(str).str.strip()
+            
+            rename_dict = {}
+            for col in df.columns:
+                norm_col = normalize_text(col)
+                if 'NOTA' in norm_col:
+                    rename_dict[col] = 'NOTAS'
+                elif 'EQUIP' in norm_col:
+                    rename_dict[col] = 'EQUIPAMENTO'
+                elif 'ARE' in norm_col:
+                    rename_dict[col] = 'ÁREA'
+                elif 'ANALIS' in norm_col:
+                    rename_dict[col] = 'Análise realizada?'
+                elif 'MES' in norm_col:
+                    rename_dict[col] = 'Mês'
+            
+            df = df.rename(columns=rename_dict)
+            
+            # Garantir colunas obrigatórias
+            expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
+            for col in expected_cols:
+                if col not in df.columns:
+                    df[col] = "Não Classificado"
+            
+            # Preencher células vazias na coluna Mês (caso venham mescladas na planilha)
+            df['Mês'] = df['Mês'].ffill().fillna("Não Informado")
+            
+            # Padronizar valores internos para os gráficos contabilizarem certinho
+            df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
+            df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
+            
+            # Remover linhas onde a nota está vazia
+            df = df.dropna(subset=["NOTAS"])
+            
             return df
         except Exception as e:
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de demonstração mais fiel às áreas reais da usina
+        # Base de demonstração padrão caso nenhum arquivo seja enviado
         data = {
-            "NOTAS": ["26161958", "26153640", "26173261", "26174250", "26174646", "28802523", "28991179", "29112101", "29296899", "29411397"],
-            "EQUIPAMENTO": ["redutor ac. travasso", "correia transportadora C206", "COMPRESSOR 5", "motor da TC_02", "CT B-202.1", "RECEBIMENTO E ENVIO", "MOTOR BRF2", "M1 VE-15", "MOTOR 1 SIT. HIDR.", "Exaustor SDAC2"],
-            "ÁREA": ["SINTERIZAÇÃO", "PÁTIO DE CARVÃO", "PLANTA DE MOAGEM", "PLANTA DE MOAGEM", "SINTERIZAÇÃO", "Patio de Carvão", "ALTO FORNO 3", "SISTEMA DE MOAGEM 1", "LTQ", "ATF3"],
-            "Análise realizada?": ["sim", "sim", "sim", "sim", "sim", "Sim", "SIM", "Sim", "Sim", "SIM"],
-            "Mês": ["Jan 2026", "Jan 2026", "Fev 2026", "Fev 2026", "Mar 2026", "out/25", "nov/25", "jan/26", "mar/26", "abr/26"]
+            "NOTAS": ["26161958", "26153640", "26173261", "26174250", "26174646", "28802523"],
+            "EQUIPAMENTO": ["redutor ac. travasso", "correia transportadora C206", "COMPRESSOR 5", "motor da TC_02", "CT B-202.1", "RECEBIMENTO E ENVIO"],
+            "ÁREA": ["SINTERIZAÇÃO", "PÁTIO DE CARVÃO", "PLANTA DE MOAGEM", "PLANTA DE MOAGEM", "SINTERIZAÇÃO", "PATIO DE CARVÃO"],
+            "Análise realizada?": ["Sim", "Sim", "Sim", "Sim", "Sim", "Sim"],
+            "Mês": ["Jan 2026", "Jan 2026", "Fev 2026", "Fev 2026", "Mar 2026", "Out 2025"]
         }
         return pd.DataFrame(data)
 
@@ -59,19 +104,9 @@ with st.sidebar:
     df = load_data(uploaded_file)
     
     if df is not None:
-        expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
-        for col in expected_cols:
-            if col not in df.columns:
-                df[col] = "Não Classificado"
-        
-        # Padronizar texto das colunas para evitar duplicidades por letras maiúsculas/minúsculas
-        df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-        df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
-
-        # Filtros ajustados para as colunas reais da planilha
         area_opt = st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df["ÁREA"].dropna().unique())))
         analise_opt = st.selectbox("Filtro por Análise realizada?:", ["Todos"] + sorted(list(df["Análise realizada?"].dropna().unique())))
-        mes_opt = st.selectbox("Filtro por Mês:", ["Todos"] + list(df["Mês"].dropna().unique()))
+        mes_opt = st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df["Mês"].dropna().unique())))
         
         search_query = st.text_input("🔍 Pesquisa Geral (Qualquer campo):", "")
         
@@ -107,7 +142,7 @@ with col_title:
 with col_btn:
     st.button("🔗 Compartilhar Dashboard")
 
-base_name = uploaded_file.name if uploaded_file else "Planilha Redução/Energia"
+base_name = uploaded_file.name if uploaded_file else "Planilha Redução/Energia (Demonstração)"
 now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 st.markdown(f"<p style='font-size: 13px; color: #555;'><b>Base:</b> {base_name} &nbsp;|&nbsp; <b>Atualizado em:</b> {now_str} &nbsp;|&nbsp; <b>Linhas filtradas:</b> {len(df_filtered):,}</p>", unsafe_allow_html=True)
 
@@ -174,13 +209,13 @@ with tab2:
             fig_donut.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_donut, use_container_width=True)
         else:
-            st.info("Sem dados disponíveis.")
+            st.info("Nenhum dado encontrado.")
 
     with col_chart_right:
         st.markdown("##### 📈 Notas por Mês")
         if not df_filtered.empty and "Mês" in df_filtered.columns:
             mes_counts = df_filtered["Mês"].value_counts().reset_index()
-            mes_counts.columns = colnames = ["Mês", "Quantidade"]
+            mes_counts.columns = ["Mês", "Quantidade"]
             
             fig_bar = px.bar(
                 mes_counts,
@@ -192,7 +227,7 @@ with tab2:
             fig_bar.update_layout(showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=350)
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
-            st.info("Sem dados disponíveis.")
+            st.info("Nenhum dado encontrado.")
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada")
