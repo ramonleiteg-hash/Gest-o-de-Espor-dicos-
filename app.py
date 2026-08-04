@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import unicodedata
+import io  # Biblioteca adicionada para gerenciar a memória do arquivo corretamente
 
 # Configuração da Página
 st.set_page_config(
@@ -46,18 +47,20 @@ def limpar_filtros():
         st.session_state[k] = "" if 'pesquisa' in k else "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO
+# LEITOR INTELIGENTE AUTOMÁTICO (CORRIGIDO COM io.BytesIO)
 # -------------------------------------------------------------------------
 @st.cache_data
-def ler_planilha_inteligente(file, tipo="esporádicas"):
-    if file is not None:
+def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
+    if file_bytes is not None:
         try:
-            is_csv = file.name.endswith('.csv')
-            file.seek(0)
+            is_csv = file_name.endswith('.csv')
+            
+            # Transforma os bytes em um "arquivo fresco" na memória para evitar conflito de cursor no final do arquivo
+            file_io = io.BytesIO(file_bytes)
             
             # Descobre qual aba (sheet) deve ser lida de forma segura
             if not is_csv:
-                xls = pd.ExcelFile(file)
+                xls = pd.ExcelFile(file_io)
                 # Define uma aba padrão de segurança caso os nomes não batam
                 sheet_target = xls.sheet_names[0] if tipo == "esporádicas" else (xls.sheet_names[-1] if len(xls.sheet_names) > 1 else xls.sheet_names[0])
                 
@@ -70,12 +73,13 @@ def ler_planilha_inteligente(file, tipo="esporádicas"):
                         sheet_target = s
                         break
             
-            file.seek(0)
+            # Reinicia a leitura do arquivo fresco
+            file_io.seek(0)
             
             if is_csv:
-                df_raw = pd.read_csv(file, header=None)
+                df_raw = pd.read_csv(file_io, header=None)
             else:
-                df_raw = pd.read_excel(file, sheet_name=sheet_target, header=None)
+                df_raw = pd.read_excel(file_io, sheet_name=sheet_target, header=None)
             
             header_row = 0
             for idx, row in df_raw.head(30).iterrows():
@@ -84,12 +88,12 @@ def ler_planilha_inteligente(file, tipo="esporádicas"):
                     header_row = idx
                     break
             
-            file.seek(0)
+            file_io.seek(0)
             
             if is_csv:
-                df = pd.read_csv(file, header=header_row)
+                df = pd.read_csv(file_io, header=header_row)
             else:
-                df = pd.read_excel(file, sheet_name=sheet_target, header=header_row)
+                df = pd.read_excel(file_io, sheet_name=sheet_target, header=header_row)
             
             df.columns = df.columns.astype(str).str.strip()
             
@@ -135,10 +139,10 @@ def ler_planilha_inteligente(file, tipo="esporádicas"):
                 
             return df
         except Exception as e:
-            st.error(f"⚠️ Não foi possível processar a aba '{tipo}'. Verifique o arquivo.")
+            st.error(f"⚠️ Erro ao processar a aba '{tipo}': {str(e)}")
             return None 
     else:
-        # Dados padrão
+        # Dados padrão de demonstração
         if tipo == "esporádicas":
             return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["SINTERIZAÇÃO", "PÁTIO", "MOAGEM"], "Status": ["ABER", "ENCE", "ENCE"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["Jan 2026", "Jan 2026", "Fev 2026"]})
         else:
@@ -168,8 +172,16 @@ with st.sidebar:
     st.header("📂 Carregar Arquivo Único")
     uploaded_file = st.file_uploader("Planilha (Abas: Esporádicas e M4)", type=["xlsx", "xls", "csv"])
     
-    df_esporadicas = ler_planilha_inteligente(uploaded_file, tipo="esporádicas")
-    df_m4 = ler_planilha_inteligente(uploaded_file, tipo="m4")
+    # Extrai os bytes uma única vez e envia para as duas funções
+    if uploaded_file is not None:
+        raw_bytes = uploaded_file.getvalue()
+        file_name = uploaded_file.name
+    else:
+        raw_bytes = None
+        file_name = ""
+        
+    df_esporadicas = ler_planilha_inteligente(raw_bytes, file_name, tipo="esporádicas")
+    df_m4 = ler_planilha_inteligente(raw_bytes, file_name, tipo="m4")
 
     st.markdown("---")
     st.subheader(f"Filtros - {painel_selecionado}")
