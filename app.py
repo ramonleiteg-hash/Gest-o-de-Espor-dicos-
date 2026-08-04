@@ -31,11 +31,11 @@ def normalize_text(text):
     return "".join([c for c in nfkd if not unicodedata.combining(c)]).upper().strip()
 
 # -------------------------------------------------------------------------
-# ESTADOS E CONTROLE DE FILTROS (Botão Limpar e Botões Rápidos)
+# ESTADOS E CONTROLE DE FILTROS
 # -------------------------------------------------------------------------
 filtros_keys = [
-    'esp_situacao', 'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
-    'm4_situacao', 'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
+    'esp_area', 'esp_status', 'esp_analise', 'esp_mes', 'esp_pesquisa', 
+    'm4_area', 'm4_status', 'm4_mes', 'm4_pesquisa'
 ]
 
 # Inicializa as variáveis na memória para os filtros funcionarem
@@ -43,8 +43,6 @@ for k in filtros_keys:
     if k not in st.session_state:
         if 'pesquisa' in k:
             st.session_state[k] = ""
-        elif 'situacao' in k:
-            st.session_state[k] = "Todas"
         else:
             st.session_state[k] = "Todos"
 
@@ -53,13 +51,11 @@ def limpar_filtros():
     for k in filtros_keys:
         if 'pesquisa' in k:
             st.session_state[k] = ""
-        elif 'situacao' in k:
-            st.session_state[k] = "Todas"
         else:
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO CORRIGIDO)
+# LEITOR INTELIGENTE AUTOMÁTICO (COM TRADUTOR DE STATUS SAP)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -112,7 +108,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 return None
             
             rename_dict = {}
-            
             col_notas = find_col(df.columns, ['NOTA', 'ORDEM', 'AVISO'])
             if col_notas: rename_dict[col_notas] = 'NOTAS'
             
@@ -134,10 +129,26 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             df = df.rename(columns=rename_dict)
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
             
+            # --- TRADUTOR DE STATUS SAP PARA ABERTA/ENCERRADA ---
+            if "Status" in df.columns:
+                # Salva o status original em uma nova coluna para consulta na tabela
+                df["Status SAP"] = df["Status"].astype(str).str.strip().str.upper()
+                
+                # Regra de classificação
+                def classificar_status(val):
+                    val_str = str(val).upper()
+                    if any(x in val_str for x in ['MSEN', 'MREL', 'ORDA', 'ORDAN', 'ENCE', 'TECO', 'CONC']):
+                        return "Encerrada"
+                    return "Aberta" # Se for MSPN ou qualquer outra sigla que não é de encerramento
+                
+                # Substitui a coluna principal Status por "Aberta" ou "Encerrada"
+                df["Status"] = df["Status SAP"].apply(classificar_status)
+            # ----------------------------------------------------
+
             if tipo == "esporádicas":
-                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status"]
+                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status", "Status SAP"]
             else:
-                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"]
+                expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês", "Status SAP"]
                 
             for col in expected_cols:
                 if col not in df.columns:
@@ -147,7 +158,6 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
                 df['Mês'] = df['Mês'].ffill().fillna("Não Informado").astype(str).str.strip()
                 
             df["ÁREA"] = df["ÁREA"].astype(str).str.strip().str.upper()
-            df["Status"] = df["Status"].astype(str).str.strip().str.upper()
             
             if "Análise realizada?" in df.columns:
                 df["Análise realizada?"] = df["Análise realizada?"].astype(str).str.strip().str.capitalize()
@@ -163,9 +173,9 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
     else:
         # Dados padrão
         if tipo == "esporádicas":
-            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
+            return pd.DataFrame({"NOTAS": ["26161958", "26153640", "26173261"], "EQUIPAMENTO": ["Redutor 1", "Correia C206", "Compressor"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN ORDA", "MSPN"], "Análise realizada?": ["Sim", "Não", "Sim"], "Mês": ["2026-01-01", "2026-01-15", "2026-02-10"]})
         else:
-            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["MSEN", "MSEN MSIM", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
+            return pd.DataFrame({"NOTAS": ["M4-901", "M4-902", "M4-903"], "EQUIPAMENTO": ["Turbina", "Exaustor", "Forno"], "ÁREA": ["US01-RD-SINT3", "US01-RD-SINT2", "US01-RD-AF002"], "Status": ["Encerrada", "Encerrada", "Aberta"], "Status SAP": ["MSEN", "MBAR MREL MSEN ORDA", "MSPN"], "Mês": ["2026-01-01", "2026-02-15", "2026-02-20"]})
 
 # -------------------------------------------------------------------------
 # CABEÇALHO PRINCIPAL E RÁDIOS DE NAVEGAÇÃO
@@ -206,39 +216,30 @@ with st.sidebar:
     if painel_selecionado == "Esporádicas":
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
         
-        st.radio("Filtro Rápido (Situação):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="esp_situacao")
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
-        st.selectbox("Filtro detalhado por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
+        st.selectbox("Filtro por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
         st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
         st.selectbox("Filtro por Mês:", ["Todos"] + sorted(list(df_ref["Mês"].dropna().unique())), key="esp_mes")
         st.text_input("🔍 Pesquisa Geral:", key="esp_pesquisa")
     else:
         df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
         
-        st.radio("Filtro Rápido (Situação M4):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="m4_situacao")
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
-        st.selectbox("Filtro detalhado por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
+        st.selectbox("Filtro por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
         st.text_input("🔍 Pesquisa M4:", key="m4_pesquisa")
         
     st.button("🧹 Limpar Filtros", on_click=limpar_filtros, type="primary", use_container_width=True)
 
-# Variável contendo a regra de palavras exatas do sistema SAP para encerradas
-REGEX_ENCERRADAS = "MSEN|MREL|ORDAN|ORDA|ENCE|TECO|CONC"
-
 # -------------------------------------------------------------------------
 # TELA 1: GESTÃO DE NOTAS ESPORÁDICAS
 # -------------------------------------------------------------------------
 if painel_selecionado == "Esporádicas":
-    df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Análise realizada?", "Mês"])
+    df = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Análise realizada?", "Mês"])
 
     df_filtered = df.copy()
-    
-    if st.session_state.esp_situacao == "Encerradas":
-        df_filtered = df_filtered[df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
-    elif st.session_state.esp_situacao == "Abertas":
-        df_filtered = df_filtered[~df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
 
+    # Filtros 
     if st.session_state.esp_area != "Todos": df_filtered = df_filtered[df_filtered["ÁREA"] == st.session_state.esp_area]
     if st.session_state.esp_status != "Todos": df_filtered = df_filtered[df_filtered["Status"] == st.session_state.esp_status]
     if st.session_state.esp_analise != "Todos": df_filtered = df_filtered[df_filtered["Análise realizada?"] == st.session_state.esp_analise]
@@ -251,8 +252,8 @@ if painel_selecionado == "Esporádicas":
     
     col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
     total_notas = len(df_filtered)
-    encerradas = len(df_filtered[df_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)])
-    abertas = total_notas - encerradas
+    encerradas = len(df_filtered[df_filtered["Status"] == "Encerrada"])
+    abertas = len(df_filtered[df_filtered["Status"] == "Aberta"])
     total_analisadas = len(df_filtered[df_filtered["Análise realizada?"].astype(str).str.lower().str.contains("sim", na=False)]) if "Análise realizada?" in df_filtered.columns else 0
     total_equipamentos = df_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_filtered.columns else 0
     
@@ -298,19 +299,17 @@ if painel_selecionado == "Esporádicas":
 
     st.markdown("---")
     st.subheader("📋 Tabela Detalhada - Esporádicas")
-    st.dataframe(df_filtered, use_container_width=True)
+    # Mostra a tabela garantindo que a coluna Status SAP apareça ao lado do Status simplificado
+    cols_order = [c for c in df_filtered.columns if c not in ["Status", "Status SAP"]] + ["Status", "Status SAP"]
+    st.dataframe(df_filtered[cols_order], use_container_width=True)
 
 # -------------------------------------------------------------------------
 # TELA 2: GESTÃO DE NOTAS M4
 # -------------------------------------------------------------------------
 else:
-    df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Mês"])
+    df_m4_filtered = df_m4.copy() if df_m4 is not None else pd.DataFrame(columns=["NOTAS", "EQUIPAMENTO", "ÁREA", "Status", "Status SAP", "Mês"])
     
-    if st.session_state.m4_situacao == "Encerradas":
-        df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
-    elif st.session_state.m4_situacao == "Abertas":
-        df_m4_filtered = df_m4_filtered[~df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)]
-
+    # Filtros
     if st.session_state.m4_area != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["ÁREA"] == st.session_state.m4_area]
     if st.session_state.m4_status != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Status"] == st.session_state.m4_status]
     if st.session_state.m4_mes != "Todos": df_m4_filtered = df_m4_filtered[df_m4_filtered["Mês"] == st.session_state.m4_mes]
@@ -322,8 +321,8 @@ else:
     
     col_k1, col_k2, col_k3, col_k4 = st.columns(4)
     total_m4 = len(df_m4_filtered)
-    encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"].astype(str).str.contains(REGEX_ENCERRADAS, case=False, na=False)])
-    abertas_m4 = total_m4 - encerradas_m4
+    encerradas_m4 = len(df_m4_filtered[df_m4_filtered["Status"] == "Encerrada"])
+    abertas_m4 = len(df_m4_filtered[df_m4_filtered["Status"] == "Aberta"])
     ativos_m4 = df_m4_filtered["EQUIPAMENTO"].nunique() if "EQUIPAMENTO" in df_m4_filtered.columns else 0
     
     with col_k1:
@@ -366,4 +365,5 @@ else:
 
     st.markdown("---")
     st.subheader("📋 Registros Detalhados - Notas M4")
-    st.dataframe(df_m4_filtered, use_container_width=True)
+    cols_order_m4 = [c for c in df_m4_filtered.columns if c not in ["Status", "Status SAP"]] + ["Status", "Status SAP"]
+    st.dataframe(df_m4_filtered[cols_order_m4], use_container_width=True)
