@@ -59,7 +59,7 @@ def limpar_filtros():
             st.session_state[k] = "Todos"
 
 # -------------------------------------------------------------------------
-# LEITOR INTELIGENTE AUTOMÁTICO (COM TRAVA DE DESDUPLICAÇÃO)
+# LEITOR INTELIGENTE AUTOMÁTICO (MAPEAMENTO AVANÇADO)
 # -------------------------------------------------------------------------
 @st.cache_data
 def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
@@ -94,7 +94,7 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             header_row = 0
             for idx, row in df_raw.head(30).iterrows():
                 row_str = " ".join([normalize_text(str(val)) for val in row.values])
-                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA', 'ORDEM', 'AVISO', 'LOCAL']):
+                if any(kw in row_str for kw in ['NOTA', 'EQUIP', 'AREA', 'M4', 'STATUS', 'SITUA', 'ORDEM', 'AVISO', 'LOCAL', 'GERENCIA', 'SETOR']):
                     header_row = idx
                     break
             
@@ -107,27 +107,47 @@ def ler_planilha_inteligente(file_bytes, file_name, tipo="esporádicas"):
             
             df.columns = df.columns.astype(str).str.strip()
             
-            # Mapeamento com proteção contra sobreposição de nomes
+            # -----------------------------------------------------------------
+            # NOVO SISTEMA DE MAPEAMENTO DE COLUNAS (PRIORIZADO E ABRANGENTE)
+            # -----------------------------------------------------------------
+            def find_col(df_cols, keywords):
+                for kw in keywords:
+                    for c in df_cols:
+                        if kw in normalize_text(c):
+                            return c
+                return None
+            
             rename_dict = {}
-            for col in df.columns:
-                norm_col = normalize_text(col)
-                if any(x in norm_col for x in ['NOTA', 'ORDEM', 'AVISO']):
-                    if 'NOTAS' not in rename_dict.values(): rename_dict[col] = 'NOTAS'
-                elif any(x in norm_col for x in ['EQUIP', 'DENOMINA']):
-                    if 'EQUIPAMENTO' not in rename_dict.values(): rename_dict[col] = 'EQUIPAMENTO'
-                elif any(x in norm_col for x in ['ARE', 'LOCAL', 'SETOR']):
-                    if 'ÁREA' not in rename_dict.values(): rename_dict[col] = 'ÁREA'
-                elif 'ANALIS' in norm_col:
-                    if 'Análise realizada?' not in rename_dict.values(): rename_dict[col] = 'Análise realizada?'
-                elif any(x in norm_col for x in ['STATUS', 'SITUA', 'ESTADO']):
-                    if 'Status' not in rename_dict.values(): rename_dict[col] = 'Status'
-                elif any(x in norm_col for x in ['MES', 'DATA', 'CRIACAO']):
-                    if 'Mês' not in rename_dict.values(): rename_dict[col] = 'Mês'
             
+            # 1. Busca por NOTAS
+            col_notas = find_col(df.columns, ['NOTA', 'ORDEM', 'AVISO'])
+            if col_notas: rename_dict[col_notas] = 'NOTAS'
+            
+            # 2. Busca por EQUIPAMENTO
+            col_equip = find_col(df.columns, ['EQUIP', 'DENOMINA', 'TAG'])
+            if col_equip: rename_dict[col_equip] = 'EQUIPAMENTO'
+            
+            # 3. Busca por ÁREA (Vocabulário expandido para SAP PM)
+            col_area = find_col(df.columns, ['ARE', 'GERENCIA', 'SETOR', 'OFICINA', 'PLANTA', 'UNIDADE', 'SISTEMA', 'CENTRO', 'LOCAL', 'DIVISAO', 'DEPARTAMENTO'])
+            if col_area: rename_dict[col_area] = 'ÁREA'
+            
+            # 4. Busca por STATUS
+            col_status = find_col(df.columns, ['STATUS', 'SITUA', 'ESTADO'])
+            if col_status: rename_dict[col_status] = 'Status'
+            
+            # 5. Busca por MÊS/DATA
+            col_mes = find_col(df.columns, ['MES', 'DATA', 'CRIACAO'])
+            if col_mes: rename_dict[col_mes] = 'Mês'
+            
+            # 6. Busca por ANÁLISE REALIZADA
+            col_analise = find_col(df.columns, ['ANALIS'])
+            if col_analise: rename_dict[col_analise] = 'Análise realizada?'
+            
+            # Aplica as renomeações e remove colunas duplicadas
             df = df.rename(columns=rename_dict)
-            
-            # Trava de segurança para desduplicação
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
+            
+            # -----------------------------------------------------------------
             
             if tipo == "esporádicas":
                 expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês", "Status"]
@@ -202,9 +222,7 @@ with st.sidebar:
     if painel_selecionado == "Esporádicas":
         df_ref = df_esporadicas if df_esporadicas is not None else pd.DataFrame(columns=["ÁREA", "Status", "Análise realizada?", "Mês"])
         
-        # BOTÕES DE FILTRO RÁPIDO PARA SITUAÇÃO
         st.radio("Filtro Rápido (Situação):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="esp_situacao")
-        
         st.selectbox("Filtro por ÁREA:", ["Todos"] + sorted(list(df_ref["ÁREA"].dropna().unique())), key="esp_area")
         st.selectbox("Filtro detalhado por Status:", ["Todos"] + sorted(list(df_ref["Status"].dropna().unique())), key="esp_status")
         st.selectbox("Filtro por Análise?:", ["Todos"] + sorted(list(df_ref["Análise realizada?"].dropna().unique())), key="esp_analise")
@@ -213,9 +231,7 @@ with st.sidebar:
     else:
         df_ref_m4 = df_m4 if df_m4 is not None else pd.DataFrame(columns=["ÁREA", "Status", "Mês"])
         
-        # BOTÕES DE FILTRO RÁPIDO PARA SITUAÇÃO
         st.radio("Filtro Rápido (Situação M4):", ["Todas", "Abertas", "Encerradas"], horizontal=True, key="m4_situacao")
-        
         st.selectbox("Filtro por ÁREA (M4):", ["Todos"] + sorted(list(df_ref_m4["ÁREA"].dropna().unique())), key="m4_area")
         st.selectbox("Filtro detalhado por Status (M4):", ["Todos"] + sorted(list(df_ref_m4["Status"].dropna().unique())), key="m4_status")
         st.selectbox("Filtro por Mês (M4):", ["Todos"] + sorted(list(df_ref_m4["Mês"].dropna().unique())), key="m4_mes")
