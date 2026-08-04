@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------------
-# CARREGAMENTO E TRATAMENTO DOS DADOS
+# CARREGAMENTO E TRATAMENTO DOS DADOS (Sem a coluna ORDENS)
 # -------------------------------------------------------------------------
 @st.cache_data
 def load_data(file):
@@ -35,10 +35,9 @@ def load_data(file):
             st.error(f"Erro ao ler o arquivo: {e}")
             return None
     else:
-        # Base de dados simulada com as colunas exatas da sua planilha
+        # Base de dados simulada sem a coluna ORDENS
         data = {
             "NOTAS": ["N001", "N002", "N003", "N004", "N005", "N006"],
-            "ORDENS": ["ORD-101", "ORD-102", "ORD-103", "ORD-104", "ORD-105", "ORD-106"],
             "EQUIPAMENTO": ["Ventilador 1", "Compressor Centac", "Bomba PU152", "Forno 3", "Subestação Principal", "Caldeira B"],
             "ÁREA": ["REDUÇÃO", "ENERGIA E UTILIDADES", "REDUÇÃO", "REDUÇÃO", "ENERGIA E UTILIDADES", "ENERGIA E UTILIDADES"],
             "Análise realizada?": ["Sim", "Não", "Sim", "Sim", "Não", "Sim"],
@@ -60,7 +59,7 @@ with st.sidebar:
     df = load_data(uploaded_file)
     
     if df is not None:
-        expected_cols = ["NOTAS", "ORDENS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
+        expected_cols = ["NOTAS", "EQUIPAMENTO", "ÁREA", "Análise realizada?", "Mês"]
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Não Classificado"
